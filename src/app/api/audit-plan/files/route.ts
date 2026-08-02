@@ -1,0 +1,259 @@
+import { NextRequest, NextResponse } from "next/server";
+import { join } from "path";
+import { db } from "~/server/db";
+import { requireAdmin, requireUser } from "~/server/helpers/currentUser";
+import {
+  uploadFile,
+  createFolder,
+  deleteOneDriveFile,
+  deleteLocalFile,
+  deleteLocalFolder,
+} from "@/server/lib/oneDriveClient";
+
+// Local base folder for AuditTool files (under public/uploads/)
+const LOCAL_BASE = "AuditTool";
+
+/** Normalise a user-supplied path into safe slash-joined segments. */
+function normalisePath(raw: string | null | undefined): string[] {
+  if (!raw) return [];
+  return raw
+    .replace(/\\/g, "/")
+    .split("/")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((s) => s.replace(/[^a-zA-Z0-9._\- ]/g, "_"));
+}
+
+function localDirFor(segments: string[]): string {
+  return join(process.cwd(), "public", "uploads", LOCAL_BASE, ...segments);
+}
+
+// All auditPlanFile items are stored under this prefix in the DB and on disk/OneDrive.
+const AAP = "Annual Internal Audit Plan";
+const AAP_PREFIX = `${AAP}/`;
+
+/**
+ * Convert a raw DB fileName to the browser-facing relative path (strips the
+ * "Annual Audit Plan/" prefix). Returns null for entries that should not be
+ * shown (e.g. the folder record itself, or items from other root folders).
+ */
+// Legacy root name (before rename)
+const AAP_LEGACY = "Annual Audit Plan";
+const AAP_LEGACY_PREFIX = `${AAP_LEGACY}/`;
+
+function toBrowserPath(raw: string): string | null {
+  // The folder entry for the root itself — not shown inside the browser
+  if (raw === AAP || raw === AAP_LEGACY) return null;
+  // New-style: stored with new prefix → strip it
+  if (raw.startsWith(AAP_PREFIX)) return raw.slice(AAP_PREFIX.length);
+  // Legacy: stored with old prefix → strip it
+  if (raw.startsWith(AAP_LEGACY_PREFIX)) return raw.slice(AAP_LEGACY_PREFIX.length);
+  // Items that belong to other known top-level folders — skip
+  const otherRoots = ["Annual Risk Assessments", "Annual Internal Audit Risk Assessments", "Audits"];
+  if (otherRoots.some((r) => raw === r || raw.startsWith(`${r}/`))) return null;
+  // Legacy item stored without any prefix — treat as directly inside Annual Audit Plan
+  return raw;
+}
+
+// GET /api/audit-plan/files — list from DB (any user)
+export async function GET() {
+  try {
+    await requireUser();
+  } catch {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const rows = await db.auditPlanFile.findMany({
+    orderBy: { createdAt: "asc" },
+    select: { id: true, fileName: true, fileUrl: true, createdAt: true },
+  });
+
+  const mapped = rows.flatMap((f) => {
+    const browserPath = toBrowserPath(f.fileName);
+    if (browserPath === null) return [];
+    const isFolder = f.fileUrl.startsWith("folder:");
+    const fileUrl = isFolder
+      ? null
+      : `/api/uploads/${LOCAL_BASE}/${encodeURIComponent(AAP)}/${browserPath.split("/").map(encodeURIComponent).join("/")}`;
+    return [{ id: f.id, kind: isFolder ? "folder" : "file", fileName: browserPath, fileUrl, createdAt: f.createdAt.toISOString() }];
+  });
+
+  return NextResponse.json(mapped);
+}
+
+// POST /api/audit-plan/files
+//   • multipart/form-data with `file`, optional `relativePath` → upload file
+//   • multipart/form-data with `kind=folder`, `path` → create folder
+export async function POST(request: NextRequest) {
+  try {
+    await requireAdmin();
+  } catch {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const formData = await request.formData();
+  const kind = (formData.get("kind") as string | null) ?? "file";
+
+  // ── Folder creation ──────────────────────────────────────────────────────
+  if (kind === "folder") {
+    const pathRaw = (formData.get("path") as string | null) ?? "";
+    // Browser sends bare paths (e.g. "FolderA" or "FolderA/SubFolder").
+    // Prepend the Annual Audit Plan root before storing.
+    const browserSegments = normalisePath(pathRaw);
+    if (browserSegments.length === 0) {
+      return NextResponse.json({ error: "Folder path is required" }, { status: 400 });
+    }
+    const fullSegments = [AAP, ...browserSegments];
+    const folderPath = fullSegments.join("/"); // stored in DB
+
+    const existing = await db.auditPlanFile.findFirst({
+      where: {
+        fileUrl: { startsWith: "folder:" },
+        fileName: { equals: folderPath },
+      },
+      select: { id: true },
+    });
+    if (existing) {
+      return NextResponse.json(
+        { error: "A folder with that name already exists here" },
+        { status: 409 },
+      );
+    }
+
+    const relativePath = fullSegments.join("/");
+    const result = await createFolder(relativePath, localDirFor(fullSegments));
+
+    const created = await db.auditPlanFile.create({
+      data: {
+        fileUrl: result.url,
+        fileName: folderPath,
+      },
+    });
+
+    return NextResponse.json({
+      id: created.id,
+      kind: "folder",
+      // Return browser-facing path (without AAP prefix)
+      fileName: browserSegments.join("/"),
+      fileUrl: null,
+      createdAt: created.createdAt.toISOString(),
+    });
+  }
+
+  // ── File upload ──────────────────────────────────────────────────────────
+  const file = formData.get("file") as File | null;
+  const rawRelativePath = (formData.get("relativePath") as string | null) ?? null;
+
+  if (!file) {
+    return NextResponse.json({ error: "No file provided" }, { status: 400 });
+  }
+
+  const supplied =
+    rawRelativePath && rawRelativePath.trim().length > 0 ? rawRelativePath : file.name;
+  const rawSegments = supplied
+    .replace(/\\/g, "/")
+    .split("/")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  const safeSegments = rawSegments.map((s) => s.replace(/[^a-zA-Z0-9._\- ]/g, "_"));
+  if (safeSegments.length === 0) {
+    return NextResponse.json({ error: "Invalid file path" }, { status: 400 });
+  }
+
+  // Browser sends bare paths (e.g. "file.pdf" or "FolderA/file.pdf").
+  // Prepend the Annual Audit Plan root for storage and disk paths.
+  const filename = safeSegments[safeSegments.length - 1]!;
+  const browserSubFolders = safeSegments.slice(0, -1);
+  const fullSegments = [AAP, ...safeSegments];
+  const fullSubFolders = [AAP, ...browserSubFolders];
+
+  const localDir = localDirFor(fullSubFolders);
+  const relativePath = fullSegments.join("/");
+  const apiUrlPath = `/api/uploads/${LOCAL_BASE}/${fullSegments
+    .map(encodeURIComponent)
+    .join("/")}` ;
+
+  const bytes = await file.arrayBuffer();
+  const buffer = Buffer.from(bytes);
+
+  const result = await uploadFile(buffer, relativePath, localDir, filename, apiUrlPath);
+
+  // DB fileName includes the AAP prefix; browser display name is bare
+  const dbFileName = fullSegments.join("/");
+  const browserFileName = safeSegments.length > 1 ? safeSegments.join("/") : file.name;
+
+  const created = await db.auditPlanFile.create({
+    data: {
+      fileUrl: result.url,
+      fileName: dbFileName,
+    },
+  });
+
+  return NextResponse.json({
+    id: created.id,
+    kind: "file",
+    // Return browser-facing path (without AAP prefix)
+    fileName: browserFileName,
+    fileUrl: result.url.startsWith("onedrive:")
+      ? `/api/uploads/${result.url.replace("onedrive:/AuditTool/", "")}`
+      : result.url,
+    createdAt: created.createdAt.toISOString(),
+  });
+}
+
+// DELETE /api/audit-plan/files?fileId=xxx — delete a file or folder
+export async function DELETE(request: NextRequest) {
+  try {
+    await requireAdmin();
+  } catch {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const fileId = new URL(request.url).searchParams.get("fileId");
+  if (!fileId) {
+    return NextResponse.json({ error: "fileId is required" }, { status: 400 });
+  }
+
+  const record = await db.auditPlanFile.findFirst({
+    where: { id: fileId },
+    select: { id: true, fileUrl: true, fileName: true },
+  });
+
+  if (!record) return NextResponse.json({ ok: true });
+
+  const isFolder = record.fileUrl.startsWith("folder:");
+
+  if (isFolder) {
+    const folderPath = record.fileName;
+    const prefix = `${folderPath}/`;
+
+    await db.auditPlanFile.deleteMany({
+      where: {
+        OR: [{ fileName: { startsWith: prefix } }, { id: record.id }],
+      },
+    });
+
+    const drivePath = record.fileUrl.replace(/^folder:/, "");
+    await deleteOneDriveFile(drivePath);
+
+    const localFolder = localDirFor(folderPath.split("/"));
+    await deleteLocalFolder(localFolder);
+
+    return NextResponse.json({ ok: true });
+  }
+
+  // Single file
+  if (record.fileUrl.startsWith("onedrive:")) {
+    const drivePath = record.fileUrl.replace("onedrive:", "");
+    await deleteOneDriveFile(drivePath);
+  } else {
+    const relativePath = record.fileUrl.replace(/^\/api\/uploads\//, "");
+    const localPath = join(process.cwd(), "public", "uploads", relativePath);
+    await deleteLocalFile(localPath);
+  }
+
+  await db.auditPlanFile.deleteMany({ where: { id: fileId } });
+
+  return NextResponse.json({ ok: true });
+}

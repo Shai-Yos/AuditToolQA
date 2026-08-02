@@ -1,0 +1,20 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Clean profile ui.tsx files",
+			"type": "shell",
+			"command": "Set-Content -NoNewline -Path 'src/app/adminDashboard/profile/ui.tsx' -Value 'export { default } from \"@/components/profile-ui\";\\n'; Set-Content -NoNewline -Path 'src/app/userDashboard/profile/ui.tsx' -Value 'export { default } from \"@/components/profile-ui\";\\n'; Set-Content -NoNewline -Path 'src/app/auditOwnerDashboard/profile/ui.tsx' -Value 'export { default } from \"@/components/profile-ui\";\\n'"
+		},
+		{
+			"label": "Fix profile ui.tsx files",
+			"type": "shell",
+			"command": "$line = 'export { default } from \"@/components/profile-ui\";'; Set-Content -Path 'src/app/adminDashboard/profile/ui.tsx' -Value $line; Set-Content -Path 'src/app/userDashboard/profile/ui.tsx' -Value $line; Set-Content -Path 'src/app/auditOwnerDashboard/profile/ui.tsx' -Value $line"
+		},
+		{
+			"label": "Delete profile ui.tsx re-export files",
+			"type": "shell",
+			"command": "Remove-Item 'src/app/adminDashboard/profile/ui.tsx', 'src/app/userDashboard/profile/ui.tsx', 'src/app/auditOwnerDashboard/profile/ui.tsx'"
+		}
+	]
+}

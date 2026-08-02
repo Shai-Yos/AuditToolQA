@@ -1,0 +1,338 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+    provider = "prisma-client-js"
+    output   = "../generated/prisma"
+}
+
+datasource db {
+    provider = "sqlserver"
+    url      = env("DATABASE_URL")
+}
+
+model User {
+    id            String    @id @default(cuid())
+    name          String?
+    email         String?   @unique
+    image         String?  @db.NVarChar(Max)
+    role      String    @default("USER")
+    isActive      Boolean   @default(true)
+    createdAt     DateTime  @default(now())
+    createdAudits Audit[]
+    createdRequests Request[] @relation("RequestCreator")
+    auditsAssigned AuditAssignee[]
+    requestAssignments RequestAssignee[]
+    uploadedDocuments Document[]
+    notifications Notification[]
+    feedbacks     Feedback[]
+    feedbackComments FeedbackComment[]
+    notifPreferences String? @db.NVarChar(1000) // JSON: notification preferences
+}
+
+model AccessRequest {
+  id             String    @id @default(cuid())
+  email          String
+  name           String
+  requestedRole  String    @default("USER")
+  reason         String?   @db.NVarChar(Max)
+  status         String    @default("PENDING") // PENDING | APPROVED | REJECTED | CANCELLED
+  createdAt      DateTime  @default(now())
+  reviewedAt     DateTime?
+  reviewedById   String?
+  reviewedByName String?
+  reviewNote     String?   @db.NVarChar(Max)
+}
+
+model Audit {
+  id        String   @id @default(cuid())
+  trackId   String?  @db.NVarChar(20) @unique // e.g. "2026-0001"
+  title     String
+  description String? @db.NVarChar(Max)
+  status    String @default("DRAFT")
+  timezone  String @default("UTC")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  startAt   DateTime?
+  endAt     DateTime?
+
+  frontRoomsCount Int @default(1)
+  backRoomsCount  Int @default(1)
+
+  roomRolesJson   String? @db.NVarChar(Max) // JSON: { fr: FRRoleAssignment[], br: BRRoleAssignment[] }
+
+  lockedBy            String?   // userId of current editor (page lock)
+  lockedByName        String?   // display name of current editor
+  lockedAt            DateTime? // last heartbeat; lock expires after 30s
+
+  outlookEventId String? @db.NVarChar(1024) // Outlook calendar event ID
+
+  createdById   String?
+  createdByName String   @default("")
+  createdBy     User?   @relation(fields: [createdById], references: [id])
+
+  requests  Request[]
+
+  users AuditAssignee[]
+  requestStatuses RequestStatus[]
+  chatMessages ChatMessage[]
+  auditFiles  AuditFile[]
+}
+
+model ChatMessage {
+  id          String   @id @default(cuid())
+  auditId     String
+  auditName   String   @default("")
+  channel     String   // e.g. "fr1-comm", "fr1-transcription"
+  authorId    String
+  authorName  String
+  authorImage String? @db.NVarChar(Max)
+  authorRole  String?
+  text        String   @db.NVarChar(Max)
+  fileUrl     String?  @db.NVarChar(Max)
+  fileName    String?
+  fileMime    String?
+  fileSize    Int?
+  mentions    String?  @db.NVarChar(Max) // JSON array of mentioned user IDs
+  createdAt   DateTime @default(now())
+  editedAt    DateTime?
+  replyToId         String?
+  replyToAuthorName String?
+  replyToText       String?  @db.NVarChar(Max)
+
+  audit      Audit    @relation(fields: [auditId], references: [id], onDelete: Cascade)
+
+  @@index([auditId, channel, createdAt])
+}
+
+model Request {
+  id            String   @id @default(cuid())
+  trackNumber   String?
+  auditId       String
+  title         String
+  labels        String    @default("[]")
+  isFormal      Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  closedAt      DateTime?
+
+  auditTitle     String   @default("") // Denormalized audit name for quick display
+  createdByName  String   @default("") // Denormalized creator display name
+
+  noteText            String?  @db.NVarChar(Max) // Single shared note (free-text)
+  noteLastEditedBy    String?  // Display name of last editor
+  noteLastEditedAt    DateTime? // Timestamp of last edit
+
+  estimatedDeliveryDate DateTime? // Optional target delivery date
+
+  lockedBy            String?  // userId of current editor (page lock)
+  lockedByName        String?  // display name of current editor
+  lockedAt            DateTime? // last heartbeat; lock expires after 30s
+
+  requestStatusId String
+  statusName     String   @default("") // Denormalized column name for performance
+  requestStatus   RequestStatus @relation(fields: [requestStatusId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  createdById String?
+  createdBy   User?   @relation("RequestCreator", fields: [createdById], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  audit         Audit      @relation(fields: [auditId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  documents     Document[]
+  assignees     RequestAssignee[]
+  notes         RequestNote[]
+  comments      RequestComment[]
+
+  @@unique([auditId, trackNumber])
+  @@index([auditId])
+  @@index([requestStatusId])
+}
+
+model RequestAssignee {
+  requestId     String
+  userId        String
+  requestTitle  String   @default("")
+  auditName     String   @default("")
+  assigneeName  String   @default("")
+  createdAt     DateTime @default(now())
+
+  request Request @relation(fields: [requestId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  user    User    @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([requestId, userId])
+  @@index([userId])
+}
+
+model Document {
+  id           String   @id @default(cuid())
+  requestId    String
+  filename     String
+  url          String
+  mime         String?
+  size         Int?
+  createdAt    DateTime @default(now())
+
+  uploadedById String?
+  uploadedBy   User?    @relation(fields: [uploadedById], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  request      Request  @relation(fields: [requestId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([requestId])
+}
+
+model AuditAssignee {
+  id        String   @id @default(cuid())
+  auditId   String
+  userId    String
+  role      String   // e.g., "VIEWER", "EDITOR", "ADMIN"
+  auditName String   @default("")
+  userName  String   @default("")
+  createdAt DateTime @default(now())
+
+  audit     Audit @relation(fields: [auditId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  user      User  @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([auditId, userId])
+  @@index([userId])
+}
+
+model RequestStatus {
+  id        String   @id @default(cuid())
+  auditId   String
+  name      String
+  order     Int
+  color     String   @default("#3b82f6")
+  createdAt DateTime @default(now())
+
+  audit     Audit @relation(fields: [auditId], references: [id], onDelete: Cascade)
+  requests  Request[]
+
+  @@unique([auditId, order])
+  @@index([auditId])
+}
+
+model AppConfig {
+  key   String @id
+  value String
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String   // e.g. "AUDIT_ASSIGNED", "REQUEST_ASSIGNED", "REQUEST_UPDATED", "CHAT_MESSAGE"
+  title     String
+  message   String   @db.NVarChar(Max)
+  linkAdmin String?  // Link for admin dashboard route
+  linkUser  String?  // Link for user dashboard route
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId, read, createdAt])
+}
+
+model ActivityLog {
+  id          String   @id @default(cuid())
+  action      String   // AUDIT_CREATED | AUDIT_UPDATED | AUDIT_DELETED | REQUEST_CREATED | REQUEST_MOVED | REQUEST_CANCELLED | REQUEST_DELETED | USER_ASSIGNED
+  actorName   String
+  targetId    String
+  targetTitle String
+  meta        String? @db.NVarChar(Max) // JSON for extra context
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+model RequestNote {
+  id          String   @id @default(cuid())
+  requestId   String
+  authorId    String
+  authorName  String
+  text        String   @db.NVarChar(Max)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  request     Request  @relation(fields: [requestId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([requestId, createdAt])
+}
+
+model RequestComment {
+  id          String   @id @default(cuid())
+  requestId   String
+  authorId    String
+  authorName  String
+  authorImage String?  @db.NVarChar(Max)
+  text        String   @db.NVarChar(Max)
+  createdAt   DateTime @default(now())
+
+  request     Request  @relation(fields: [requestId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([requestId, createdAt])
+}
+
+model Feedback {
+  id        String            @id @default(cuid())
+  userId    String
+  userName  String            @default("Unknown")
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rating    Int
+  comment   String?           @db.NVarChar(2000)
+  createdAt DateTime          @default(now())
+  comments  FeedbackComment[]
+
+  @@index([createdAt])
+}
+
+model FeedbackComment {
+  id         String   @id @default(cuid())
+  feedbackId String
+  feedback   Feedback @relation(fields: [feedbackId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  userId     String
+  userName   String
+  user       User     @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  content    String   @db.NVarChar(2000)
+  createdAt  DateTime @default(now())
+
+  @@index([feedbackId, createdAt])
+}
+
+model AuditFile {
+  id        String   @id @default(cuid())
+  auditId   String
+  slot      String   // "agenda" | "readyBox"
+  fileName  String
+  fileUrl   String   @db.NVarChar(Max)
+  createdAt DateTime @default(now())
+
+  audit     Audit @relation(fields: [auditId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([auditId, slot])
+}
+
+model RiskAssessmentFile {
+  id        String   @id @default(cuid())
+  fileName  String   // path within the "Annual Risk Assessments" folder, e.g. "2026/Q1.pdf"
+  fileUrl   String   @db.NVarChar(Max) // "onedrive:/AuditTool/Annual Risk Assessments/..." or "folder:..."
+  createdAt DateTime @default(now())
+
+  @@index([fileName])
+}
+
+model AuditPlanFile {
+  id        String   @id @default(cuid())
+  fileName  String   // path within the "Annual Audit Plan" folder, e.g. "2026/Q1.pdf"
+  fileUrl   String   @db.NVarChar(Max) // "onedrive:/AuditTool/Annual Audit Plan/..." or "folder:..."
+  createdAt DateTime @default(now())
+
+  @@index([fileName])
+}
+
+model SirtFile {
+  id        String   @id @default(cuid())
+  fileName  String   // path within the "SIRT" folder, e.g. "2026/report.pdf"
+  fileUrl   String   @db.NVarChar(Max) // "onedrive:/AuditTool/Site Investigation Response Team (SIRT)/..." or "folder:..."
+  createdAt DateTime @default(now())
+
+  @@index([fileName])
+}

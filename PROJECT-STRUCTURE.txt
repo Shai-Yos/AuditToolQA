@@ -1,0 +1,594 @@
+================================================================================
+                    AUDIT MANAGEMENT TOOL — PROJECT STRUCTURE
+================================================================================
+
+Tech Stack: Next.js App Router · TypeScript · Tailwind CSS · Prisma · SQL Server
+Auth:        Email-based session cookie (`audit_user_email`) with DB-managed roles
+API Layer:   tRPC + traditional Next.js API routes & Server Actions
+Package Mgr: pnpm
+
+
+================================================================================
+  ROOT FILES
+================================================================================
+
+package.json            Project dependencies, scripts (dev, build, lint, db:*)
+next.config.js          Next.js config — standalone output, ESLint ignored in builds
+tsconfig.json           TypeScript compiler options, path aliases (@/ → src/)
+tsconfig.tsbuildinfo    TypeScript incremental build cache
+eslint.config.js        Linting rules
+prettier.config.js      Code formatting rules
+postcss.config.js       PostCSS plugin config (uses @tailwindcss/postcss)
+next-env.d.ts           Auto-generated Next.js type declarations
+docker-compose.yml      Local SQL Server container for development
+start-database.sh       Shell helper to spin up the database container
+vercel.json             Vercel deployment configuration
+vitest.config.ts        Vitest test runner configuration
+_check.cjs              Build check / validation script
+_fix_upload.cjs         Upload path/data repair helper script
+README.md               Project readme
+REQUIREMENTS.md         Project requirements/specification notes
+
+
+================================================================================
+  src/
+================================================================================
+
+The main application source. Everything lives here.
+
+├── auth.config.ts       Auth-related configuration and compatibility helpers
+├── auth.ts              Auth/session helper exports used by server code
+├── env.js               Environment variable schema & validation (DATABASE_URL,
+│                        app/runtime variables)
+├── middleware.ts        Route protection middleware — checks auth cookies,
+│                        redirects unauthenticated users to /login, enforces
+│                        role-based routing (ADMIN / AUDIT_OWNER / USER)
+│
+├── app/                 Next.js App Router pages & API routes
+├── components/          Shared React components used across dashboards
+├── server/              Backend logic: database client, helpers, tRPC routers
+├── trpc/                tRPC client setup (React Query integration)
+├── types/               TypeScript shared types/augmentations
+└── styles/              Global CSS (Tailwind base + custom styles)
+
+
+================================================================================
+  src/app/  —  Pages & API Routes (App Router)
+================================================================================
+
+layout.tsx               Root layout — wraps entire app (html/body, providers)
+page.tsx                 Landing page (redirects to login or dashboard)
+error.tsx                Route-level error boundary
+global-error.tsx         Global application error boundary
+not-found.tsx            App Router not-found page
+
+feedback/
+└── actions.ts           Server Actions for shared feedback flow
+
+request-access/
+├── page.tsx             Server component — renders access request flow
+└── ui.tsx               Client component — submits role/access requests
+
+────────────────────────────────────────────────────────────────────────────────
+  src/app/login/          PUBLIC — Login page
+────────────────────────────────────────────────────────────────────────────────
+  page.tsx                Server component — renders login UI
+  ui.tsx                  Client component — login form, calls Server Action
+                          to verify email, sets audit_user_email cookie,
+                          redirects by role
+
+────────────────────────────────────────────────────────────────────────────────
+  src/app/adminDashboard/   ADMIN ROUTES
+────────────────────────────────────────────────────────────────────────────────
+
+  layout.tsx              Admin layout — sidebar navigation via AdminShell
+  page.tsx                Admin dashboard home (stats, recent audits overview)
+  ui.tsx                  Client-side interactive parts of the dashboard
+  actions.ts              Server Actions shared across admin pages
+
+  _components/
+  └── AdminShell.tsx      Admin shell layout — sidebar + top bar + main content area
+
+  allAudits/              Browse ALL audits in the system
+  ├── page.tsx            Server component — fetches all audits
+  └── ui.tsx              Client component — filterable audit list/table
+
+  allRequests/            Browse ALL requests across all audits (global view)
+  ├── page.tsx            Server component — fetches all requests
+  └── ui.tsx              Client component — filterable request list
+
+  createAudit/            Create a new audit
+  ├── page.tsx            Server component — renders form
+  └── ui.tsx              Client component — audit creation form
+
+  accessRequests/         Approve/reject access/role requests
+  users/                  User directory and role administration
+  appLogo/                App logo/branding management
+  auditPlan/              Audit planning workflow and views
+  └── page.tsx            Server component
+  riskAssessments/        Risk assessment management
+  └── page.tsx            Server component
+  sirt/                   SIRT-specific dashboards/tools
+  └── page.tsx            Server component
+  feedback/               Feedback administration views
+  ├── page.tsx            Server component
+  ├── ui.tsx              Client component
+  └── actions.ts          Server Actions for feedback admin views
+
+  editAudit/[auditId]/    Edit an existing audit
+  ├── page.tsx            Server component — fetches audit data
+  ├── ui.tsx              Client component — edit form
+  └── actions.ts          Server Actions for updating audit fields
+
+  audits/[auditId]/       Single audit detail area (nested routes)
+  │
+  ├── assignees/          Manage who is assigned to this audit
+  │   ├── page.tsx        Server — fetches assignees
+  │   └── ui.tsx          Client — add/remove users, set room roles
+  │
+  ├── chats/              Real-time chat & transcription panels
+  │   ├── page.tsx        Server — loads channels, messages, user info
+  │   ├── ui.tsx          Client — ChatPanel component (messages, composer,
+  │   │                   edit/delete, file upload, transcription editor)
+  │   └── popout/         Opens a chat/transcription in its own browser window
+  │       ├── page.tsx    Server — loads single channel for popout
+  │       └── ui.tsx      Client — popout wrapper with audit title bar
+  │
+  ├── kanbanBoard/        Kanban-style board for audit requests
+  │   ├── page.tsx        Server — fetches requests grouped by status
+  │   └── ui.tsx          Client — drag-and-drop board columns
+  │
+  └── requests/           Manage requests within this audit
+      ├── new/            Create a new request
+      │   ├── page.tsx    Server — renders form
+      │   ├── ui.tsx      Client — request creation form
+      │   └── actions.ts  Server Actions for request creation
+      │
+      └── [requestId]/    View/edit a specific request
+          ├── layout.tsx  Layout for request detail view
+          ├── page.tsx    Server — fetches request data
+          ├── ui.tsx      Client — request detail/edit form, document list
+          └── actions.ts  Server Actions for request updates
+
+  requestStatuses/        Manage custom request status types
+  ├── page.tsx            Server — fetches status list
+  ├── ui.tsx              Client — CRUD interface for statuses
+  └── actions.ts          Server Actions for status management
+
+  profile/                Admin profile page
+  └── page.tsx            Server — fetches user profile; uses shared Profile UI
+
+────────────────────────────────────────────────────────────────────────────────
+  src/app/userDashboard/   USER ROUTES
+────────────────────────────────────────────────────────────────────────────────
+
+  Mirrors the admin structure but scoped to assigned audits only.
+  Users cannot: create/edit audits, manage statuses, view all audits/requests.
+
+  layout.tsx              User layout — sidebar navigation via UserShell
+  page.tsx                User dashboard home (assigned audits overview)
+  ui.tsx                  Client-side dashboard UI
+
+  _components/
+  └── UserShell.tsx       User shell layout — sidebar + top bar + main content area
+
+  audits/[auditId]/       Audit the user is assigned to
+  │
+  ├── page.tsx            Server — fetches audit detail
+  ├── ui.tsx              Client — audit detail UI
+  ├── actions.ts          Server Actions shared across this audit section
+  │
+  ├── assignees/          View team members (read-only for users)
+  │   ├── page.tsx
+  │   └── ui.tsx
+  │
+  ├── chats/              Chat & transcription (transcription is read-only for users)
+  │   ├── page.tsx
+  │   ├── ui.tsx          Same ChatPanel but with readOnly prop for transcription
+  │   └── popout/
+  │       ├── page.tsx
+  │       └── ui.tsx
+  │
+  ├── kanbanBoard/        View request board
+  │   ├── page.tsx
+  │   └── ui.tsx
+  │
+  └── requests/           Requests in assigned audit
+      ├── new/            Create a request (within assigned audit)
+      │   ├── page.tsx
+      │   ├── ui.tsx
+      │   └── actions.ts
+      │
+      └── [requestId]/    View/edit a request
+          ├── layout.tsx
+          ├── page.tsx
+          ├── ui.tsx
+          └── actions.ts
+
+  profile/                User profile
+  └── page.tsx
+
+  auditPlan/              User-facing audit plan views
+  └── page.tsx
+  riskAssessments/        User-facing risk assessment views
+  └── page.tsx
+  sirt/                   User-facing SIRT views
+  └── page.tsx
+  requestRole/            Role upgrade/access request flow
+  └── page.tsx
+  my-feedback/            User feedback history/list
+  ├── page.tsx
+  └── ui.tsx
+
+────────────────────────────────────────────────────────────────────────────────
+  src/app/auditOwnerDashboard/   AUDIT OWNER ROUTES
+────────────────────────────────────────────────────────────────────────────────
+
+  layout.tsx              Audit owner shell layout
+  page.tsx                Audit owner dashboard home
+  ui.tsx                  Client-side dashboard UI
+  actions.ts              Server Actions shared by audit owner pages
+
+  _components/
+  └── AuditOwnerShell.tsx Audit owner shell layout — sidebar + top bar + content
+
+  allAudits/              Browse owned/visible audits
+  ├── page.tsx
+  └── ui.tsx
+  allRequests/            Browse owned/visible requests
+  ├── page.tsx
+  └── ui.tsx
+  createAudit/            Create audits (owner scope)
+  └── page.tsx
+  editAudit/[auditId]/    Edit audit details
+  └── page.tsx
+  audits/[auditId]/       Audit detail area (assignees/chats/kanban/requests)
+  │
+  ├── assignees/          Assignee management/view
+  │   ├── page.tsx
+  │   └── ui.tsx
+  ├── chats/              Chat/transcription area
+  │   ├── page.tsx
+  │   ├── ui.tsx
+  │   └── popout/
+  │       ├── page.tsx
+  │       └── ui.tsx
+  ├── kanbanBoard/        Request Kanban board
+  │   ├── page.tsx
+  │   └── ui.tsx
+  └── requests/           Request list/detail area
+      ├── page.tsx
+      ├── ui.tsx
+      ├── new/
+      │   ├── page.tsx
+      │   ├── ui.tsx
+      │   └── actions.ts
+      └── [requestId]/
+          ├── layout.tsx
+          ├── page.tsx
+          ├── ui.tsx
+          └── actions.ts
+  auditPlan/              Audit planning workflow
+  └── page.tsx
+  riskAssessments/        Risk assessment workflow
+  └── page.tsx
+  sirt/                   SIRT workflow/tools
+  └── page.tsx
+  requestRole/            Role/access request flow
+  └── page.tsx
+  my-feedback/            Personal feedback history/list
+  └── page.tsx
+  profile/                Audit owner profile
+  └── page.tsx
+
+────────────────────────────────────────────────────────────────────────────────
+  src/app/api/             API Route Handlers
+────────────────────────────────────────────────────────────────────────────────
+
+  auth/[...nextauth]/route.ts       NextAuth compatibility/auth handler
+
+  notifications/route.ts            GET/PATCH — list notifications, mark read/all-read
+  notifications/stream/route.ts     SSE stream for real-time notification pushes
+  me/notif-preferences/route.ts     GET/PUT — per-user notification preferences
+  me/role/route.ts                  GET — current user role/profile summary
+
+  feedback/route.ts                 POST — submit user feedback
+
+  audits/[auditId]/
+  ├── assignment/route.ts           POST/DELETE — assign/unassign users to audit
+  ├── chat/route.ts                 GET/POST/PATCH/DELETE — chat messages CRUD
+  ├── chat/upload/route.ts          POST — upload file attachments to chat
+  ├── export/route.ts               GET — export audit data/files
+  ├── files/route.ts                GET/POST — audit-level file operations
+  ├── fr-requests/route.ts          GET — front-room request summary data
+  ├── last-updated/route.ts         GET — when was this audit last modified
+  ├── lock/route.ts                 POST/DELETE — edit lock handling
+  ├── meta/route.ts                 GET — audit metadata (title, status, rooms)
+  ├── requests-list/route.ts        GET — request list for audit views
+  ├── tab-counts/route.ts           GET — per-tab counts for UI badges
+  └── transcription/route.ts        POST/GET — transcription-related operations
+
+  requests/[requestId]/
+  ├── comments-notes/route.ts       GET/POST/PATCH — notes/comments operations
+  ├── documents/route.ts            GET/POST — list & upload documents
+  ├── documents/[documentId]/route.ts  GET/DELETE — download & remove a document
+  ├── lock/route.ts                 POST/DELETE — request edit lock handling
+  └── view/route.ts                 GET — request detail/view payload
+
+  documents/[documentId]/route.ts   GET — document download/lookup endpoint
+
+  cron/
+  ├── auto-complete-audits/route.ts GET — background job to auto-complete audits
+  └── sync-users/route.ts           GET — user sync/background maintenance
+
+  activity-log/export/route.ts      GET — export activity logs (e.g. CSV)
+  user/photo/route.ts               GET — fetch user profile photo
+  users/search/route.ts             GET — search users by name/email
+  last-updated/route.ts             GET — global last-updated timestamp
+  trpc/[trpc]/route.ts              tRPC catch-all HTTP handler
+
+  audit-plan/files/route.ts         GET/POST — audit plan file operations
+  risk-assessments/files/route.ts   GET/POST — risk assessment file operations
+  sirt/files/route.ts               GET/POST — SIRT file operations
+  onedrive/open-url/route.ts        GET — generate or proxy OneDrive open URLs
+  uploads/[...path]/route.ts        Catch-all upload file serving/helper route
+  internal/server-log/route.ts      Internal server log ingestion endpoint
+
+
+================================================================================
+  src/components/  —  Shared UI Components
+================================================================================
+
+audit-form/              Reusable audit form (used by both create & edit pages)
+├── audit-form-components.tsx  Audit form field/section components
+└── audit-form-shared.ts       Shared audit form helpers/types
+audit-nav-context.tsx    React context for audit sidebar navigation state
+audit-card.tsx           Reusable audit card/list item presentation
+audit-plan/
+└── AuditPlanUI.tsx      Shared audit plan UI component
+audit-sidebar-items.tsx  Sidebar menu items for audit detail views
+AuthProvider.tsx         App auth/session provider wrapper
+DatePicker.tsx           Shared date picker component
+FeedbackWidget.tsx       Floating feedback launcher + modal form
+fr-requests-strip.tsx    Front-room request strip component
+kanban-request-card.tsx  Reusable Kanban request card components
+labelColors.ts           Shared label color mappings/utilities
+MentionTextarea.tsx      Mention-enabled textarea input
+new-request-modal.tsx    Modal dialog for quickly creating a request from chat
+NotificationBell.tsx     Notification bell, dropdown, toasts, preferences
+profile-ui.tsx           Shared profile UI component
+request-print-view.tsx   Printable request details view
+risk-assessments/
+└── RiskAssessmentsUI.tsx Shared risk assessment UI component
+role-upgrade-request-ui.tsx Role upgrade/access request UI
+shell-helpers.tsx        Helper utilities for the dashboard shell layouts
+sirt/
+└── SIRTUI.tsx           Shared SIRT UI component
+ThemeProvider.tsx        Theme state/provider wrapper
+ThemeToggle.tsx          Theme mode toggle
+transcription-editor.tsx Tiptap rich text editor for transcription panels
+                         (toolbar: bold, italic, underline, headings, lists, etc.)
+
+
+================================================================================
+  src/server/  —  Backend Logic
+================================================================================
+
+db.ts                    Prisma client singleton (imported as `db` everywhere)
+
+helpers/
+├── actions.ts           Shared server-side action/helper utilities
+├── autoCompleteAudits.ts Logic for the cron job that auto-completes finished audits
+├── currentUser.ts       Helper to fetch the currently authenticated user from session
+├── logActivity.ts       Utility to write entries to the ActivityLog table
+└── notifications.ts     Notification creation/delivery helpers
+
+lib/
+├── graphClient.ts       Microsoft Graph integration helper
+├── oneDriveClient.ts    OneDrive integration helper
+├── outlookCalendar.ts   Outlook calendar integration helper
+├── requestNotesComments.ts Request notes/comments helper logic
+├── requestStatus.ts     Request status helper logic
+├── roomRoles.ts         Utilities for managing front/back room role assignments
+└── userPrivilegeCache.ts User privilege caching helper
+
+api/
+├── trpc.ts              tRPC initialization (context, middleware, procedures)
+├── root.ts              Root tRPC router (merges all sub-routers)
+└── routers/
+    └── user.ts          tRPC router for user queries/mutations
+
+
+================================================================================
+  src/trpc/  —  tRPC Client Configuration
+================================================================================
+
+css.d.ts                 CSS/module type declarations
+query-client.ts          React Query client setup & configuration
+react.tsx                tRPC React hooks (useMutation, useQuery, etc.)
+server.ts                Server-side tRPC caller (for Server Components)
+
+
+================================================================================
+  src/types/
+================================================================================
+
+next-auth.d.ts           Legacy/compat type augmentation file (if used)
+
+
+================================================================================
+  src/styles/
+================================================================================
+
+globals.css              Global stylesheet:
+                         - Imports Tailwind CSS
+                         - @tailwindcss/typography plugin (prose classes)
+                         - Custom Tiptap placeholder styles
+
+
+================================================================================
+  prisma/  —  Database Schema & Migrations
+================================================================================
+
+schema.prisma            Prisma schema defining all models:
+
+  ┌──────────────────┐   ┌──────────────────┐   ┌──────────────────┐
+  │      User        │   │      Audit       │   │     Request      │
+  │──────────────────│   │──────────────────│   │──────────────────│
+  │ id, email, name  │   │ id, title        │   │ id, title        │
+  │ role (ADMIN/USER)│   │ status, rooms    │   │ trackNumber      │
+  │ image, sessions  │──▶│ frontRoomsCount  │──▶│ status, auditId  │
+  └──────────────────┘   │ backRoomsCount   │   │ createdById      │
+                         │ createdById      │   └──────────────────┘
+                         └──────────────────┘           │
+                                │                       ▼
+                         ┌──────────────────┐   ┌──────────────────┐
+                         │  AuditAssignee   │   │    Document      │
+                         │──────────────────│   │──────────────────│
+                         │ userId, auditId  │   │ id, name, url    │
+                         │ roomRoles (JSON) │   │ requestId        │
+                         └──────────────────┘   └──────────────────┘
+
+                         ┌──────────────────┐   ┌──────────────────┐
+                         │  ChatMessage     │   │  ActivityLog     │
+                         │──────────────────│   │──────────────────│
+                         │ id, text, channel│   │ id, action       │
+                         │ auditId          │   │ userId, auditId  │
+                         │ authorId/Name    │   │ details          │
+                         │ file fields      │   │ createdAt        │
+                         └──────────────────┘   └──────────────────┘
+
+                         ┌──────────────────┐   ┌──────────────────┐
+                         │ RequestStatus    │   │ RequestAssignee  │
+                         │──────────────────│   │──────────────────│
+                         │ id, name, color  │   │ userId           │
+                         │ auditId          │   │ requestId        │
+                         └──────────────────┘   └──────────────────┘
+
+migrations/              25+ migration files tracking every schema change
+                         (init → audit_core → rooms → chat → requests → etc.)
+
+
+================================================================================
+  public/  —  Static Assets
+================================================================================
+
+uploads/                 Runtime directory for user-uploaded files
+                         Organized as: uploads/{AuditTitle}/chat/...
+                                       uploads/{AuditTitle}/requests/{TrackNumber}/...
+background.png           Background image asset
+excel.png                Icon for Excel file type indicators
+favicon.ico              Browser tab icons
+favicon.png              PNG favicon asset
+favicon1.ico
+Philips_logo.png         Company logo (used in login/header)
+powerpoint.png           Icon for PowerPoint file type indicators
+word.png                 Icon for Word file type indicators
+
+
+================================================================================
+  generated/prisma/  —  Auto-Generated Prisma Client
+================================================================================
+
+Generated via `prisma generate`. Contains:
+- TypeScript type definitions for all models
+- JavaScript client code
+- Query engine binary (query_engine-windows.dll.node)
+- Edge/Wasm runtime variants
+- DO NOT edit manually — regenerated from schema.prisma
+
+
+================================================================================
+  certificates/  —  Local Development HTTPS
+================================================================================
+
+localhost.pem            Self-signed SSL certificate for local HTTPS
+localhost-key.pem        Private key for the certificate
+
+
+================================================================================
+  .github/
+================================================================================
+
+copilot-instructions.md  AI assistant guidelines — documents the tech stack,
+                         auth flow, role permissions, coding conventions,
+                         and file/folder patterns for this project
+workflows/               GitHub Actions workflows
+
+
+================================================================================
+  ARCHITECTURE DIAGRAM (Text)
+================================================================================
+
+  Browser
+    │
+    ▼
+  ┌─────────────────────────────────────────────────────────────┐
+  │                     Next.js App Router                       │
+  │                                                              │
+  │  /login ──────────────▶ Server Action ──▶ Set audit_user_email cookie ──▶ Redirect
+  │                                                              │
+  │  middleware.ts ◄── Checks cookie + role on every request     │
+  │       │                                                      │
+  │       ├── ADMIN ──▶ /adminDashboard/**                       │
+  │       │                 │                                    │
+  │       │                 ├── page.tsx (Server) fetches data    │
+  │       │                 └── ui.tsx (Client) renders UI        │
+  │       │                                                      │
+  │       ├── AUDIT_OWNER ─▶ /auditOwnerDashboard/**             │
+  │       │                                                      │
+  │       └── USER ───▶ /userDashboard/**                        │
+  │                         │                                    │
+  │                         ├── page.tsx (Server) fetches data    │
+  │                         └── ui.tsx (Client) renders UI        │
+  │                                                              │
+  │  /api/** ─────────▶ Route Handlers (REST-style endpoints)    │
+  │  /api/trpc/** ────▶ tRPC Handler (type-safe RPCs)            │
+  │                                                              │
+  └──────────────────────────┬──────────────────────────────────┘
+                             │
+                             ▼
+                    ┌─────────────────┐
+                    │  Prisma ORM     │
+                    │  (db client)    │
+                    └────────┬────────┘
+                             │
+                             ▼
+                    ┌─────────────────┐
+                    │  SQL Server     │
+                    │  (Azure)        │
+                    └─────────────────┘
+
+  External Services:
+  ┌─────────────────┐
+  │ Optional enterprise integrations (e.g. OneDrive endpoints) │
+  └─────────────────┘
+
+
+================================================================================
+  DATA FLOW: Request Lifecycle
+================================================================================
+
+  1. Admin creates Audit          → Audit record in DB
+  2. Admin assigns Users          → AuditAssignee records
+  3. User sees assigned Audit     → Filtered by AuditAssignee
+  4. User creates Request         → Request record linked to Audit
+  5. Users upload Documents       → Document records + files in /public/uploads/
+  6. Team discusses in Chat       → ChatMessage records per channel
+  7. Admin transcribes meetings   → ChatMessage in *-transcription channel
+  8. Requests move through board  → Status updates (Kanban)
+  9. All actions logged           → ActivityLog records
+  10. Cron auto-completes audits  → Status → COMPLETED when all done
+
+
+================================================================================
+  CHANNEL NAMING CONVENTION (Chat)
+================================================================================
+
+  Each audit has front rooms (FR1, FR2, ...) and each room gets two channels:
+
+  fr{n}-comm             Communication channel (team chat)
+  fr{n}-transcription    Meeting transcription (admin edits, users read-only)
+
+  Example for an audit with 2 front rooms:
+    fr1-comm, fr1-transcription, fr2-comm, fr2-transcription

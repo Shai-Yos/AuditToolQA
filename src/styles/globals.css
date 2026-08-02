@@ -1,0 +1,708 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+/* Class-based dark mode for Tailwind v4 */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif,
+    "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+}
+
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes wiggle {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(-0.5deg); }
+  75% { transform: rotate(0.5deg); }
+}
+
+@utility animate-wiggle {
+  animation: wiggle 0.3s ease-in-out infinite;
+}
+
+/* Tiptap placeholder */
+.tiptap p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: theme(--color-slate-400);
+  pointer-events: none;
+  height: 0;
+}
+
+/* Style number input spinners to match Philips blue theme */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  opacity: 1;
+  cursor: pointer;
+}
+
+input[type="number"]::-webkit-inner-spin-button:hover,
+input[type="number"]::-webkit-outer-spin-button:hover {
+  background-color: rgb(37 99 235 / 0.1); /* blue-600 with opacity */
+}
+
+/* Firefox */
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+input[type="number"]::-moz-number-spin-box {
+  opacity: 1;
+}
+
+/* Custom blue accent color for number inputs */
+input[type="number"]:focus::-webkit-inner-spin-button,
+input[type="number"]:focus::-webkit-outer-spin-button {
+  opacity: 1;
+}
+
+/* Tiptap links — pointer cursor + clickable styling */
+.tiptap a {
+  cursor: pointer !important;
+  color: #2563eb !important;
+  text-decoration: underline !important;
+}
+
+/* Pointer cursor for all enabled buttons */
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]) {
+  cursor: pointer;
+}
+
+button:disabled,
+[role="button"][aria-disabled="true"] {
+  cursor: not-allowed;
+}
+
+/* Subtle universal hover effect — darkens any background slightly in light mode,
+   brightens it in dark mode. Specific hover utilities (.dark-blue-btn, hover:bg-*)
+   layer on top and override this. */
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]) {
+  transition: filter 0.15s ease, background-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+button:not(:disabled):hover,
+[role="button"]:not([aria-disabled="true"]):hover {
+  filter: brightness(0.96);
+}
+.dark button:not(:disabled):hover,
+.dark [role="button"]:not([aria-disabled="true"]):hover {
+  filter: brightness(1.18);
+}
+button:not(:disabled):active,
+[role="button"]:not([aria-disabled="true"]):active {
+  filter: brightness(0.92);
+}
+.dark button:not(:disabled):active,
+.dark [role="button"]:not([aria-disabled="true"]):active {
+  filter: brightness(1.08);
+}
+
+/* Themed button hover utilities — work in both light and dark mode.
+   Apply alongside Tailwind bg-{color}-50 / dark:bg-{color}-900/30 classes. */
+.dark-blue-btn:not(:disabled):hover {
+  background-color: rgb(219 234 254); /* blue-100 */
+}
+.dark .dark-blue-btn:not(:disabled):hover {
+  background-color: rgb(30 58 138 / 0.55); /* blue-900 / 55% */
+  color: rgb(191 219 254); /* blue-200 */
+}
+
+.dark-red-btn:not(:disabled):hover {
+  background-color: rgb(254 226 226); /* red-100 */
+}
+.dark .dark-red-btn:not(:disabled):hover {
+  background-color: rgb(127 29 29 / 0.55); /* red-900 / 55% */
+  color: rgb(254 202 202); /* red-200 */
+}
+
+.dark-green-btn:not(:disabled):hover {
+  background-color: rgb(220 252 231); /* green-100 */
+}
+.dark .dark-green-btn:not(:disabled):hover {
+  background-color: rgb(20 83 45 / 0.55); /* green-900 / 55% */
+  color: rgb(187 247 208); /* green-200 */
+}
+
+.dark-amber-btn:not(:disabled):hover {
+  background-color: rgb(254 243 199); /* amber-100 */
+}
+.dark .dark-amber-btn:not(:disabled):hover {
+  background-color: rgb(120 53 15 / 0.55); /* amber-900 / 55% */
+  color: rgb(253 230 138); /* amber-200 */
+}
+
+/* Nav link hover utilities — same palette as *-btn but for <a> elements */
+.dark-blue-link:hover {
+  background-color: rgb(219 234 254); /* blue-100 */
+}
+.dark .dark-blue-link:hover {
+  background-color: rgb(30 58 138 / 0.65); /* blue-900 / 65% */
+  color: rgb(191 219 254); /* blue-200 */
+}
+
+.dark-amber-link:hover {
+  background-color: rgb(254 243 199); /* amber-100 */
+}
+.dark .dark-amber-link:hover {
+  background-color: rgb(120 53 15 / 0.65); /* amber-900 / 65% */
+  color: rgb(253 230 138); /* amber-200 */
+}
+
+.dark-purple-link:hover {
+  background-color: rgb(243 232 255); /* purple-100 */
+}
+.dark .dark-purple-link:hover {
+  background-color: rgb(88 28 135 / 0.65); /* purple-900 / 65% */
+  color: rgb(233 213 255); /* purple-200 */
+}
+
+.dark-cyan-link:hover {
+  background-color: rgb(207 250 254); /* cyan-100 */
+}
+.dark .dark-cyan-link:hover {
+  background-color: rgb(22 78 99 / 0.65); /* cyan-900 / 65% */
+  color: rgb(165 243 252); /* cyan-200 */
+}
+
+.dark-emerald-link:hover {
+  background-color: rgb(209 250 229); /* emerald-100 */
+}
+.dark .dark-emerald-link:hover {
+  background-color: rgb(6 78 59 / 0.65); /* emerald-900 / 65% */
+  color: rgb(167 243 208); /* emerald-200 */
+}
+
+/* FR requests strip search field theme (chat transcription) */
+.fr-requests-search {
+  border-color: rgb(253 230 138); /* amber-200 */
+  background-color: rgb(255 255 255);
+  color: rgb(120 53 15); /* amber-900 */
+}
+
+.fr-requests-search::placeholder {
+  color: rgb(251 191 36); /* amber-400 */
+}
+
+.fr-requests-search:focus {
+  border-color: rgb(251 191 36); /* amber-400 */
+  box-shadow: 0 0 0 2px rgb(253 230 138); /* amber-200 */
+}
+
+.dark .fr-requests-search {
+  border-color: rgb(146 64 14); /* amber-800 */
+  background-color: rgb(120 53 15 / 0.25); /* amber-900 / 25% */
+  color: rgb(253 230 138); /* amber-200 */
+}
+
+.dark .fr-requests-search::placeholder {
+  color: rgb(252 211 77 / 0.7); /* amber-300 / 70% */
+}
+
+.dark .fr-requests-search:focus {
+  border-color: rgb(217 119 6); /* amber-600 */
+  box-shadow: 0 0 0 2px rgb(180 83 9 / 0.5); /* amber-700 / 50% */
+}
+
+/* Tiptap editor text in dark mode */
+.dark .tiptap,
+.dark .tiptap *:not(a) {
+  color: #e2eaf7 !important;
+}
+.dark .tiptap.tiptap a,
+.dark .tiptap.tiptap a * {
+  color: #2563eb !important;
+}
+
+/* ============================================================
+   Global dark mode overrides
+   Placed OUTSIDE @layer so unlayered CSS wins over
+   Tailwind's @layer utilities across every page.
+
+   Elevation palette (lighter blue-indigo):
+     Level 0 – canvas   #1b2333  deep navy
+     Level 1 – card     #242d42  elevated surface (cards, panels)
+     Level 2 – surface  #2c3650  table headers, subtle bg
+     Level 3 – hover    #33405e  interactive hover states
+     Border soft        #303d58  subtle separators
+     Border medium      #3b4f6a  visible borders
+
+   Text hierarchy:
+     Primary   #e2eaf7  soft blue-tinted white
+     Secondary #a0b2cc  muted blue-gray
+     Muted     #6e87a8  barely visible
+   ============================================================ */
+
+/* Body baseline */
+.dark body {
+  background-color: #1b2333;
+  color: #e2eaf7;
+}
+
+/* ---- Backgrounds ------------------------------------------ */
+.dark .bg-white            { background-color: #242d42; }
+
+/* ---- Gray overrides (feedback popup uses gray-* not slate-*) */
+.dark .text-gray-800   { color: #e2eaf7; }
+.dark .text-gray-700   { color: #c8d6ec; }
+.dark .text-gray-600   { color: #a0b2cc; }
+.dark .text-gray-400   { color: #5e7a9e; }
+.dark .text-gray-300   { color: #3b4f6a; }
+.dark .border-gray-300 { border-color: #303d58; }
+.dark .hover\:text-gray-600:hover { color: #a0b2cc !important; }
+.dark .bg-slate-50         { background-color: #1b2333; }
+.dark .bg-slate-100        { background-color: #2c3650; }
+.dark .bg-slate-200        { background-color: #33405e; }
+
+/* dark: variant classes used on shell wrappers/footer */
+.dark .bg-slate-900        { background-color: #1b2333; }   /* page canvas */
+.dark aside.bg-slate-900   { background-color: #0f172a; }   /* sidebar stays dark */
+.dark .bg-slate-800        { background-color: #242d42; }   /* footer / elevated panels */
+.dark .border-slate-700    { border-color: #303d58; }       /* footer border */
+
+/* opacity variant (table thead) */
+.dark .bg-slate-50\/80     { background-color: rgb(27 35 51 / 0.85); }
+
+/* ---- Hover backgrounds ------------------------------------ */
+.dark .hover\:bg-white:hover      { background-color: #33405e; }
+.dark .hover\:bg-slate-50:hover   { background-color: #2c3650 !important; }
+.dark .hover\:bg-slate-50\/60:hover { background-color: rgb(44 54 80 / 0.6) !important; }
+.dark .hover\:bg-slate-50:hover   { background-color: #2c3650; }
+.dark .hover\:bg-slate-100:hover  { background-color: #33405e; }
+.dark .hover\:bg-slate-200:hover  { background-color: #3b4f6a; }
+
+/* ---- Primary action buttons & links (not sidebar <aside>) -- */
+.dark button.bg-slate-900,
+.dark a.bg-slate-900            { background-color: #3b6ef5; }
+.dark button.hover\:bg-slate-800:hover,
+.dark a.hover\:bg-slate-800:hover {
+  background-color: #2558e8;
+  box-shadow: 0 4px 18px rgb(59 110 245 / 0.5);
+}
+
+/* ---- Text -------------------------------------------------- */
+.dark .text-slate-900  { color: #e2eaf7; }
+.dark .text-slate-800  { color: #d0daf0; }
+.dark .text-slate-700  { color: #b8c8e4; }
+.dark .text-slate-600  { color: #a0b2cc; }
+.dark .text-slate-500  { color: #7a95b5; }
+.dark .text-slate-400  { color: #5e7a9e; }
+
+/* ---- Sidebar: keep original slate colors (sidebar bg stays dark in both themes) */
+.dark aside .text-slate-400  { color: #94a3b8; }
+.dark aside .text-slate-500  { color: #64748b; }
+.dark aside .hover\:text-white:hover { color: #ffffff !important; }
+
+/* ---- Hover text ------------------------------------------- */
+.dark .hover\:text-slate-700:hover  { color: #d0daf0 !important; }
+.dark .hover\:text-blue-600:hover   { color: #93c5fd !important; }
+.dark .hover\:text-red-500:hover    { color: #fca5a5 !important; }
+.dark .hover\:text-slate-300:hover  { color: #e2eaf7 !important; }
+
+/* ---- Borders ---------------------------------------------- */
+.dark .border-slate-100  { border-color: #303d58; }
+.dark .border-slate-200  { border-color: #303d58; }
+.dark .border-slate-300  { border-color: #3b4f6a; }
+.dark .border-blue-300   { border-color: #3b6ef5; }
+.dark .border-blue-400   { border-color: #60a5fa; }
+
+/* ---- Hover borders ---------------------------------------- */
+.dark .hover\:border-slate-300:hover { border-color: #94a3b8 !important; }
+
+/* ring- utilities */
+.dark .ring-1.ring-slate-200 { --tw-ring-color: #303d58; }
+.dark .hover\:ring-2:hover   { --tw-ring-color: #3b6ef5; }
+
+/* ---- Divide ----------------------------------------------- */
+.dark .divide-slate-100 > * + *  { border-color: #303d58; }
+.dark .divide-slate-200 > * + *  { border-color: #303d58; }
+
+/* ---- Form controls ---------------------------------------- */
+.dark input:not([type="checkbox"]):not([type="radio"]),
+.dark textarea,
+.dark select {
+  background-color: #2c3650;
+  color: #e2eaf7;
+  border-color: #303d58;
+}
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: #5e7499;
+}
+.dark input:focus,
+.dark textarea:focus,
+.dark select:focus {
+  border-color: #3b6ef5;
+  box-shadow: 0 0 0 3px rgb(59 110 245 / 0.2);
+}
+
+/* Keep FR requests strip search on amber palette in dark mode */
+.dark input.fr-requests-search {
+  border-color: rgb(146 64 14);
+  background-color: rgb(120 53 15 / 0.25);
+  color: rgb(253 230 138);
+}
+
+.dark input.fr-requests-search::placeholder {
+  color: rgb(252 211 77 / 0.7);
+}
+
+.dark input.fr-requests-search:focus {
+  border-color: rgb(217 119 6);
+  box-shadow: 0 0 0 2px rgb(180 83 9 / 0.5);
+}
+
+/* ---- Scrollbar (webkit) ----------------------------------- */
+::-webkit-scrollbar              { background-color: #e2e8f0; width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb        { background-color: #94a3b8; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover  { background-color: #3b6ef5; }
+
+.dark ::-webkit-scrollbar              { background-color: #1b2333; }
+.dark ::-webkit-scrollbar-thumb        { background-color: #3b4f6a; }
+.dark ::-webkit-scrollbar-thumb:hover  { background-color: #3b6ef5; }
+
+/* ---- Status / role badge backgrounds ---------------------- */
+.dark .bg-green-50    { background-color: #0e2e1e; }
+.dark .bg-blue-50     { background-color: #172444; }
+.dark .bg-amber-50    { background-color: #2c1c0c; }
+.dark .bg-amber-100   { background-color: #34220e; }
+.dark .bg-violet-100  { background-color: #201338; }
+.dark .bg-emerald-100 { background-color: #0d2419; }
+.dark .bg-red-50      { background-color: #2c1212; }
+.dark .bg-blue-100    { background-color: #172444; }
+.dark .bg-indigo-100  { background-color: #1a1535; }
+.dark .bg-indigo-50   { background-color: #131228; }
+.dark .bg-teal-50     { background-color: #071e1c; }
+.dark .bg-teal-100    { background-color: #0a2826; }
+.dark .bg-pink-50     { background-color: #28101f; }
+.dark .bg-pink-100    { background-color: #321428; }
+.dark .bg-sky-100     { background-color: #0c2240; }
+.dark .bg-purple-100  { background-color: #1e1035; }
+.dark .bg-fuchsia-100 { background-color: #21102e; }
+.dark .bg-pink-100    { background-color: #2a1120; }
+.dark .bg-rose-100    { background-color: #2c0f14; }
+.dark .bg-orange-100  { background-color: #2c1a08; }
+
+/* ---- Badge text ------------------------------------------- */
+.dark .text-green-700    { color: #6ee7a4; }
+.dark .text-blue-700     { color: #7ab8ff; }
+.dark .text-blue-600     { color: #93c5fd; }
+.dark .text-blue-500     { color: #93c5fd; }
+.dark .text-blue-400     { color: #60a5fa; }
+.dark .text-amber-700    { color: #f5c842; }
+.dark .text-amber-800    { color: #f5c842; }
+.dark .text-blue-800     { color: #93c5fd; }
+.dark .text-indigo-700   { color: #a5b4fc; }
+.dark .text-indigo-800   { color: #a5b4fc; }
+.dark .text-teal-700     { color: #5eead4; }
+.dark .text-teal-800     { color: #5eead4; }
+.dark .text-pink-700     { color: #f9a8d4; }
+.dark .text-pink-800     { color: #f9a8d4; }
+.dark .text-cyan-700     { color: #67e8f9; }
+.dark .text-cyan-800     { color: #67e8f9; }
+.dark .text-emerald-700  { color: #6ee7b7; }
+.dark .text-sky-700      { color: #7dd3fc; }
+.dark .text-emerald-800  { color: #6ee7b7; }
+.dark .text-sky-800      { color: #7dd3fc; }
+.dark .text-purple-800   { color: #d8b4fe; }
+.dark .text-fuchsia-800  { color: #f0abfc; }
+.dark .text-pink-800     { color: #f9a8d4; }
+.dark .text-rose-800     { color: #fda4af; }
+.dark .text-orange-800   { color: #fdba74; }
+.dark .text-violet-600   { color: #c4b5fd; }
+.dark .text-violet-700   { color: #c4b5fd; }
+.dark .text-violet-800   { color: #c4b5fd; }
+.dark .text-violet-900   { color: #ddd6fe; }
+.dark .text-violet-400   { color: #a78bfa; }
+.dark .text-emerald-700  { color: #6ee7b7; }
+.dark .text-red-700      { color: #fca5a5; }
+.dark .text-red-600      { color: #fca5a5; }
+.dark .text-red-500      { color: #fca5a5; }
+.dark .text-cyan-700     { color: #67e8f9; }
+.dark .text-purple-700   { color: #d8b4fe; }
+.dark .text-orange-700   { color: #fdba74; }
+.dark .text-sky-700      { color: #7dd3fc; }
+.dark .text-violet-50    { color: #f5f3ff; }
+.dark .text-rose-700     { color: #fda4af; }
+
+/* ---- Activity log badge backgrounds ----------------------- */
+.dark .bg-cyan-50     { background-color: #082930; }
+.dark .bg-purple-50   { background-color: #1e1030; }
+.dark .bg-orange-50   { background-color: #2c1a08; }
+.dark .bg-sky-50      { background-color: #0c1e3a; }
+.dark .bg-violet-50   { background-color: #180d30; }
+.dark .bg-rose-50     { background-color: #2c0f12; }
+.dark .bg-emerald-50  { background-color: #0a2a1a; }
+
+/* ---- Activity log badge rings ----------------------------- */
+.dark .ring-cyan-200    { --tw-ring-color: #164e55; }
+.dark .ring-purple-200  { --tw-ring-color: #4c1d95; }
+.dark .ring-orange-200  { --tw-ring-color: #7c2d12; }
+.dark .ring-sky-200     { --tw-ring-color: #0c4a6e; }
+.dark .ring-violet-200  { --tw-ring-color: #3b0764; }
+.dark .ring-green-200   { --tw-ring-color: #14532d; }
+.dark .ring-emerald-200 { --tw-ring-color: #065f46; }
+.dark .ring-amber-200   { --tw-ring-color: #78350f; }
+.dark .ring-red-200     { --tw-ring-color: #7f1d1d; }
+.dark .ring-slate-200   { --tw-ring-color: #303d58; }
+.dark .ring-rose-200    { --tw-ring-color: #881337; }
+
+/* ---- Badge borders ---------------------------------------- */
+.dark .border-green-200   { border-color: #166534; }
+.dark .border-blue-200    { border-color: #1e40af; }
+.dark .border-amber-200   { border-color: #92400e; }
+.dark .border-red-200     { border-color: #991b1b; }
+.dark .border-violet-200  { border-color: #4c1d95; }
+.dark .border-indigo-200  { border-color: #312e81; }
+.dark .border-indigo-300  { border-color: #4338ca; }
+.dark .border-teal-200    { border-color: #0f4f4a; }
+.dark .border-teal-300    { border-color: #0d9488; }
+.dark .border-pink-200    { border-color: #9d174d; }
+.dark .border-pink-300    { border-color: #db2777; }
+.dark .border-cyan-200    { border-color: #164e63; }
+.dark .border-cyan-300    { border-color: #0891b2; }
+.dark .border-rose-300    { border-color: #e11d48; }
+.dark .border-purple-300  { border-color: #9333ea; }
+.dark .border-sky-300     { border-color: #0284c7; }
+.dark .border-emerald-300 { border-color: #059669; }
+.dark .border-orange-300  { border-color: #ea580c; }
+.dark .border-amber-300   { border-color: #d97706; }
+.dark .border-green-300   { border-color: #16a34a; }
+.dark .border-emerald-200 { border-color: #065f46; }
+.dark .border-sky-200     { border-color: #0369a1; }
+.dark .border-purple-200  { border-color: #6b21a8; }
+.dark .border-fuchsia-200 { border-color: #86198f; }
+.dark .border-pink-200    { border-color: #9d174d; }
+.dark .border-rose-200    { border-color: #9f1239; }
+.dark .border-orange-200  { border-color: #9a3412; }
+
+/* ---- Shadow softening ------------------------------------- */
+.dark .shadow-sm  { box-shadow: 0 1px 3px rgb(0 0 0 / 0.35), 0 0 0 1px #303d58; }
+.dark .shadow-md  { box-shadow: 0 4px 12px rgb(0 0 0 / 0.35), 0 0 0 1px #3b4f6a; }
+.dark .shadow-lg  { box-shadow: 0 8px 24px rgb(0 0 0 / 0.45), 0 0 0 1px #3b4f6a; }
+
+/* ---- Card hover ring -------------------------------------- */
+.dark .hover\:ring-2:hover {
+  --tw-ring-color: #60a5fa;
+  --tw-ring-shadow: 0 0 0 2px var(--tw-ring-color);
+  box-shadow: var(--tw-ring-shadow), 0 4px 20px rgb(96 165 250 / 0.25);
+}
+.dark .hover\:shadow-md:hover {
+  box-shadow: 0 6px 24px rgb(0 0 0 / 0.7), 0 0 0 2px #60a5fa, 0 0 16px rgb(96 165 250 / 0.2);
+}
+
+/* ---- Action button hovers --------------------------------- */
+.dark .hover\:bg-red-100:hover     { background-color: #4a1a1a !important; }
+.dark .hover\:border-red-300:hover { border-color: #ef4444 !important; }
+.dark .hover\:text-red-800:hover   { color: #fca5a5 !important; }
+.dark .hover\:ring-red-300:hover   { --tw-ring-color: #b91c1c !important; }
+
+.dark .hover\:bg-green-100:hover     { background-color: #103d22 !important; }
+.dark .hover\:border-green-300:hover { border-color: #22c55e !important; }
+.dark .hover\:text-green-800:hover   { color: #86efac !important; }
+
+.dark .hover\:bg-blue-100:hover     { background-color: #172444 !important; }
+.dark .hover\:border-blue-300:hover { border-color: #60a5fa !important; }
+.dark .hover\:border-blue-400:hover { border-color: #3b82f6 !important; }
+.dark .hover\:text-blue-800:hover   { color: #93c5fd !important; }
+.dark .hover\:ring-blue-300:hover   { --tw-ring-color: #3b82f6 !important; }
+.dark .active\:bg-blue-50:active    { background-color: #172444 !important; }
+.dark .active\:border-blue-300:active { border-color: #60a5fa !important; }
+
+.dark .hover\:bg-amber-100:hover      { background-color: #3d2a05 !important; }
+.dark .hover\:border-amber-300:hover  { border-color: #d97706 !important; }
+.dark .hover\:ring-amber-300:hover    { --tw-ring-color: #b45309 !important; }
+
+.dark .hover\:bg-violet-100:hover     { background-color: #2e1065 !important; }
+.dark .hover\:border-violet-300:hover { border-color: #7c3aed !important; }
+.dark .hover\:border-violet-400:hover { border-color: #a78bfa !important; }
+
+.dark .hover\:bg-emerald-100:hover    { background-color: #0d4028 !important; }
+.dark .hover\:border-emerald-300:hover { border-color: #059669 !important; }
+.dark .hover\:ring-emerald-300:hover  { --tw-ring-color: #059669 !important; }
+
+.dark .hover\:bg-teal-100:hover       { background-color: #0a2826 !important; }
+.dark .hover\:border-teal-300:hover   { border-color: #0d9488 !important; }
+
+.dark .hover\:bg-indigo-100:hover     { background-color: #1a1535 !important; }
+.dark .hover\:border-indigo-300:hover { border-color: #4338ca !important; }
+
+.dark .hover\:bg-pink-100:hover       { background-color: #321428 !important; }
+.dark .hover\:border-pink-300:hover   { border-color: #db2777 !important; }
+
+.dark .hover\:bg-cyan-100:hover       { background-color: #082930 !important; }
+.dark .hover\:border-cyan-300:hover   { border-color: #0891b2 !important; }
+
+.dark .hover\:bg-rose-100:hover       { background-color: #2c0f14 !important; }
+.dark .hover\:border-rose-300:hover   { border-color: #e11d48 !important; }
+
+.dark .hover\:bg-purple-100:hover     { background-color: #1e1035 !important; }
+.dark .hover\:border-purple-300:hover { border-color: #9333ea !important; }
+
+.dark .hover\:bg-sky-100:hover        { background-color: #0c1e3a !important; }
+.dark .hover\:border-sky-300:hover    { border-color: #0284c7 !important; }
+
+.dark .hover\:bg-orange-100:hover     { background-color: #2c1a08 !important; }
+.dark .hover\:border-orange-300:hover { border-color: #ea580c !important; }
+
+/* ---- File input button ------------------------------------ */
+.dark input[type="file"]::file-selector-button {
+  background-color: #172444;
+  color: #93c5fd;
+  border: 0;
+}
+.dark input[type="file"]:hover::file-selector-button {
+  background-color: #1e3260 !important;
+}
+
+/* ---- Chat: panel header opacity variants ------------------ */
+.dark .bg-blue-50\/60   { background-color: rgb(23 36 68 / 0.7) !important; }
+.dark .bg-blue-50\/40   { background-color: rgb(23 36 68 / 0.5) !important; }
+.dark .bg-amber-50\/60  { background-color: rgb(44 28 12 / 0.7) !important; }
+.dark .bg-amber-50\/40  { background-color: rgb(44 28 12 / 0.5) !important; }
+.dark .bg-amber-100\/90 { background-color: rgb(52 34 14 / 0.9) !important; }
+.dark .bg-white\/80     { background-color: rgb(36 45 66 / 0.85) !important; }
+.dark .bg-white\/60     { background-color: rgb(36 45 66 / 0.65) !important; }
+.dark .bg-white\/50     { background-color: rgb(36 45 66 / 0.55) !important; }
+.dark .bg-white\/40     { background-color: rgb(36 45 66 / 0.45) !important; }
+
+/* ---- Chat: panel header tinted headings ------------------- */
+.dark .text-blue-900  { color: #93c5fd; }
+.dark .text-amber-900 { color: #fcd34d; }
+
+/* ---- Chat: rings / status button rings -------------------- */
+.dark .ring-amber-200   { --tw-ring-color: #fde68a; }
+.dark .ring-blue-200    { --tw-ring-color: #bfdbfe; }
+.dark .ring-green-200   { --tw-ring-color: #bbf7d0; }
+.dark .ring-violet-200  { --tw-ring-color: #ddd6fe; }
+.dark .ring-slate-200   { --tw-ring-color: #263049; }
+
+/* activity log icon badges (rounded-xl + ring-1) — keep muted, not neon */
+.dark .rounded-xl.ring-1.ring-amber-200  { --tw-ring-color: #78350f; }
+.dark .rounded-xl.ring-1.ring-violet-200 { --tw-ring-color: #3b0764; }
+
+/* ring-2 + shadow-sm: restore ring on top of shadow (our shadow-sm override clobbers it) */
+.dark .ring-2.ring-amber-200 {
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.35), 0 0 0 2px #fde68a !important;
+}
+.dark .ring-2.ring-blue-200 {
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.35), 0 0 0 2px #bfdbfe !important;
+}
+.dark .ring-2.ring-green-200 {
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.35), 0 0 0 2px #bbf7d0 !important;
+}
+
+/* Status button selected backgrounds */
+.dark .bg-green-50\/40  { background-color: rgb(6 30 14 / 0.5) !important; }
+
+/* ---- Chat: message row hover (JS-driven class) ------------ */
+.dark .bg-slate-100\/70 { background-color: rgb(30 39 64 / 0.7) !important; }
+
+/* ---- Chat: context menu hovers ---------------------------- */
+.dark .hover\:bg-blue-50:hover  { background-color: #0c1e3d !important; }
+.dark .hover\:bg-red-50:hover   { background-color: #3f1010 !important; }
+.dark .hover\:bg-slate-50:hover { background-color: #1e2740 !important; }
+
+/* ---- Chat: composer input focus — remove ring/border change in dark mode -- */
+.dark .focus-within\:border-blue-500:focus-within { border-color: #3b82f6 !important; }
+.dark .focus-within\:ring-blue-100:focus-within   { --tw-ring-color: rgb(59 130 246 / 0.2) !important; }
+
+/* ---- Suppress the textarea's own focus glow (the outer wrapper handles it) */
+.dark textarea:focus {
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+/* ---- Preserve true transparency (e.g. chat textarea inside a styled wrapper) */
+.dark .bg-transparent { background-color: transparent !important; }
+
+/* ---- Kanban column header bg-*-200 shades (keep dark but colorful) -------- */
+.dark .bg-blue-200    { background-color: #1e3a6e; }
+.dark .bg-purple-200  { background-color: #3b1f6e; }
+.dark .bg-green-200   { background-color: #14452a; }
+.dark .bg-yellow-200  { background-color: #3d2e05; }
+.dark .bg-red-200     { background-color: #5a1a1a; }
+.dark .bg-orange-200  { background-color: #4a2008; }
+.dark .bg-pink-200    { background-color: #5a1040; }
+.dark .bg-indigo-200  { background-color: #252060; }
+.dark .bg-teal-200    { background-color: #0d3d38; }
+.dark .bg-violet-200  { background-color: #311555; }
+.dark .bg-emerald-200 { background-color: #0d4028; }
+.dark .bg-sky-200     { background-color: #0c2e55; }
+.dark .bg-rose-200    { background-color: #5a1422; }
+.dark .bg-amber-200   { background-color: #3d2a05; }
+.dark .bg-lime-200    { background-color: #1e3a08; }
+
+/* ---- Transcription editor toolbar ------------------------- */
+.dark .bg-amber-50\/80          { background-color: rgb(44 28 12 / 0.85) !important; }
+.dark .border-amber-200         { border-color: #78350f; }
+
+/* toolbar buttons */
+.dark .bg-amber-200             { background-color: #78350f; }
+.dark .text-amber-900           { color: #fcd34d; }
+.dark .hover\:bg-slate-100:hover { background-color: #33405e !important; }
+
+/* ---- Notification dropdown panel -------------------------- */
+.dark .notif-panel {
+  background-color: #2c3650 !important;
+  border-color: #3b4f6a !important;
+  box-shadow: 0 8px 32px rgb(0 0 0 / 0.55), 0 0 0 1px #3b4f6a !important;
+}
+.dark .notif-panel .border-b { border-color: #3b4f6a !important; }
+.dark .notif-panel .text-slate-900  { color: #e2eaf7 !important; }
+.dark .notif-panel .text-slate-500  { color: #a0b2cc !important; }
+.dark .notif-panel .text-slate-400  { color: #6e87a8 !important; }
+.dark .notif-panel .bg-blue-50\/50  { background-color: rgb(30 55 100 / 0.4) !important; }
+.dark .notif-panel button:hover     { background-color: #33405e !important; }
+.dark .notif-panel .text-blue-400   { color: #93c5fd !important; }
+.dark .notif-panel button.hover\:bg-blue-900\/40:hover { background-color: rgb(30 58 138 / 0.4) !important; }
+
+/* ---- Notification toast card ------------------------------ */
+.dark .notif-toast {
+  background-color: #2c3650 !important;
+  border-color: #3b4f6a !important;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.5), 0 0 0 1px #3b4f6a !important;
+}
+.dark .notif-toast .text-slate-900 { color: #e2eaf7 !important; }
+.dark .notif-toast .text-slate-500 { color: #a0b2cc !important; }
+
+/* Tiptap prose text inside transcription panel */
+.dark .prose,
+.dark .prose p,
+.dark .prose li,
+.dark .prose span,
+.dark .prose td { color: #e2eaf7; }
+
+.dark .prose-headings\:text-slate-900 :is(h1,h2,h3,h4,h5,h6),
+.dark .prose h1,.dark .prose h2,.dark .prose h3 { color: #e2eaf7 !important; }
+
+.dark .prose-blockquote\:text-slate-600 blockquote,
+.dark .prose blockquote { color: #a0b2cc !important; border-left-color: #78350f !important; }
+
+.dark .prose strong { color: #e2eaf7; }
+.dark .prose code { color: #fcd34d; background-color: #2c3650; }
+.dark .prose pre { background-color: #1b2333; color: #e2eaf7; }
+
+/* ---- Gradient decorative overlays ------------------------- */
+.dark .from-slate-50 {
+  --tw-gradient-from: #1e2738;
+  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to, transparent);
+}
+.dark .from-blue-50 {
+  --tw-gradient-from: rgb(30 39 64 / 0.5);
+  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to, transparent);
+}
+.dark .to-blue-50\/30 { --tw-gradient-to: rgb(23 36 68 / 0.3); }
+.dark .via-cyan-50\/30,
+.dark .via-cyan-50\/40 {
+  --tw-gradient-via: transparent;
+  --tw-gradient-stops: var(--tw-gradient-from), transparent, var(--tw-gradient-to, transparent);
+}
+.dark .bg-gradient-to-b.from-blue-50 { opacity: 0.4; }
+
+/* ---- Ring white (avatar ring on profile page) ------------- */
+.dark .ring-white { --tw-ring-color: #2c3650 !important; }

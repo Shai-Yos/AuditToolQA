@@ -1,0 +1,16 @@
+name: Deploy AuditsTool
+
+on:
+  push:
+    branches:
+      - main-duplicate
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+
+    steps:
+      - name: Run deployment script
+        shell: powershell
+        run: |
+          powershell.exe -ExecutionPolicy Bypass -File "C:\DeployScripts\deploy-audits-tool.ps1"

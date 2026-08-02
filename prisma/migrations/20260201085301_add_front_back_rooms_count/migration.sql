@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "Audit" ADD COLUMN     "backRoomsCount" INTEGER NOT NULL DEFAULT 1,
+ADD COLUMN     "frontRoomsCount" INTEGER NOT NULL DEFAULT 1;
