@@ -33,7 +33,6 @@ export async function middleware(request: NextRequest) {
       path: "/",
       sameSite: "lax",
       secure: isProduction,
-      domain: isProduction ? "audits.ilqhfaatc1vwap2.code1.emi.philips.com" : undefined,
     });
   }
 
