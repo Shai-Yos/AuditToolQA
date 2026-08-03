@@ -5,6 +5,7 @@ import { signIn } from "next-auth/react";
 export function SignInButton() {
   return (
     <button
+      // Starts the Azure AD authentication flow.
       onClick={() => signIn("azure-ad", { callbackUrl: "/" })}
       className="group relative flex w-full max-w-xs mx-auto items-center justify-center gap-3 rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 focus:outline-none focus:ring-4 focus:ring-blue-100"
     >
