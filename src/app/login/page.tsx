@@ -36,6 +36,9 @@ export default async function LoginPage() {
         {/* Disclaimer Card */}
         <div className="rounded-2xl border border-slate-300 bg-white p-6 shadow-sm">
           <div className="text-center mb-6">
+            <p className="mb-2 text-sm font-semibold uppercase tracking-[0.25em] text-slate-500">
+              QA Environment
+            </p>
             <h1 className="text-4xl font-bold tracking-tight text-slate-900">
               Audit / Inspection Management Tool
             </h1>
