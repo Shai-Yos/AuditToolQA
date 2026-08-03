@@ -1,16 +1,16 @@
-name: Deploy AuditsTool
+name: Deploy AuditToolQA
 
 on:
   push:
     branches:
-      - main-duplicate
+      - main
 
 jobs:
   deploy:
-    runs-on: self-hosted
+    runs-on: [self-hosted, qa]
 
     steps:
       - name: Run deployment script
         shell: powershell
         run: |
-          powershell.exe -ExecutionPolicy Bypass -File "C:\DeployScripts\deploy-audits-tool.ps1"
+          powershell.exe -ExecutionPolicy Bypass -File "C:\DeployScripts\deploy-audits-tool-qa.ps1"
