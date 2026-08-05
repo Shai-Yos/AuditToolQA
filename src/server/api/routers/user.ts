@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { createTRPCRouter, publicProcedure } from "@/server/api/trpc";
 import { db } from "@/server/db";
-import { searchUsers, getUserPhoto } from "@/server/lib/graphClient";
+import { searchUsers } from "@/server/lib/graphClient";
 
 export const userRouter = createTRPCRouter({
     searchDbUsers: publicProcedure
@@ -22,18 +22,7 @@ export const userRouter = createTRPCRouter({
                 select: { id: true, image: true },
               })
             : [];
-          // Track which IDs exist in the DB (regardless of whether they have a photo).
-          const dbIdSet = new Set(dbPhotos.map((u) => u.id));
           const photoMap = new Map(dbPhotos.map((u) => [u.id, u.image]));
-
-          // For users not yet in the DB, fetch their photo from Graph individually.
-          const unknownIds = ids.filter((id) => !dbIdSet.has(id));
-          await Promise.all(
-            unknownIds.map(async (id) => {
-              const photo = await getUserPhoto(id).catch(() => null);
-              photoMap.set(id, photo);
-            })
-          );
 
           return azureUsers.map((u) => ({
             id: u.id,
