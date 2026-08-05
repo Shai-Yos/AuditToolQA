@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useEffect, useRef, useCallback, useSyncExternalStore } from "react";
+import { useState, useEffect, useRef, useCallback, useSyncExternalStore, createContext, useContext } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { useAuditNav } from "@/components/audit-nav-context";
@@ -13,6 +13,9 @@ const TranscriptionEditor = dynamic(
 );
 
 import { FrRequestsStrip } from "@/components/fr-requests-strip";
+
+// Single SSE connection shared across all ChatPanel instances on the same page
+const AuditStreamContext = createContext<string>("");
 
 type Message = {
   id: string;
@@ -127,7 +130,6 @@ export default function ChatsUI({
   }, [setOrder]);
   const handleDragEnd = useCallback(() => { dragIdxRef.current = null; setDragOverIdx(null); }, []);
 
-  // Live audit metadata (title, rooms, status banner) — polled every 8 s
   const [liveTitle, setLiveTitle] = useState(auditTitle);
   const [liveFrontRoomsCount, setLiveFrontRoomsCount] = useState(frontRoomsCount);
   const [liveStatusBanner, setLiveStatusBanner] = useState(statusBanner);
@@ -143,8 +145,10 @@ export default function ChatsUI({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const [streamEvent, setStreamEvent] = useState("");
+
   useEffect(() => {
-    const poll = async () => {
+    const fetchMeta = async () => {
       try {
         const res = await fetch(`/api/audits/${auditId}/meta`);
         if (!res.ok) return;
@@ -160,12 +164,21 @@ export default function ChatsUI({
         setLiveTotalRequests(data.totalRequests);
       } catch { /* ignore */ }
     };
-    const id = setInterval(poll, 8000);
-    return () => clearInterval(id);
+
+    // One SSE connection for the whole page — events forwarded to ChatPanels via context
+    const es = new EventSource(`/api/audits/${auditId}/stream`);
+    es.onmessage = (e) => {
+      setStreamEvent(e.data);
+      if (e.data === "meta" || e.data === "requests" || e.data === "kanban") void fetchMeta();
+    };
+
+    const id = setInterval(() => void fetchMeta(), 60_000);
+    return () => { es.close(); clearInterval(id); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auditId]);
 
   return (
+    <AuditStreamContext.Provider value={streamEvent}>
     <main className="min-h-screen bg-slate-50">
       <div className="pointer-events-none absolute inset-x-0 top-0 h-64 bg-gradient-to-b from-blue-50 via-cyan-50/30 to-transparent" />
 
@@ -359,6 +372,7 @@ export default function ChatsUI({
         />
       )}
     </main>
+    </AuditStreamContext.Provider>
   );
 }
 
@@ -529,7 +543,6 @@ export function ChatPanel({
   const lastTimeRef = useRef<string | null>(initialMessages.at(-1)?.time ?? null);
   const mountedRef = useRef(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const savedMsgIdsRef = useRef<string[]>(rightPanel && latestInitialTranscription ? [latestInitialTranscription.id] : []);
   const savedContentRef = useRef<string>(rightPanel ? latestInitialTranscription?.text ?? "" : "");
   const hasUserEditedRef = useRef(false);
@@ -543,7 +556,7 @@ export function ChatPanel({
     ta.style.height = Math.min(ta.scrollHeight, 120) + "px";
   }, [text, rightPanel]);
 
-  // Typing indicator — report & poll
+  // Typing indicator — report only (poll replaced by SSE-triggered fetch)
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reportTyping = useCallback(() => {
     if (typingTimeoutRef.current) return; // throttle: max once per 2s
@@ -555,19 +568,14 @@ export function ChatPanel({
     typingTimeoutRef.current = setTimeout(() => { typingTimeoutRef.current = null; }, 2000);
   }, [auditId, channel]);
 
-  useEffect(() => {
-    const poll = async () => {
-      try {
-        const res = await fetch(`/api/audits/${auditId}/chat/typing?channel=${encodeURIComponent(channel)}`);
-        if (!res.ok) return;
-        const names = (await res.json()) as string[];
-        setTypingNames(names);
-      } catch { /* ignore */ }
-    };
-    const id = setInterval(poll, 2000);
-    return () => clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [auditId, channel, rightPanel]);
+  const fetchTyping = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/audits/${auditId}/chat/typing?channel=${encodeURIComponent(channel)}`);
+      if (!res.ok) return;
+      const names = (await res.json()) as string[];
+      setTypingNames(names);
+    } catch { /* ignore */ }
+  }, [auditId, channel]);
 
   // Keep a ref to the latest text so the interval always reads the current value
   const textRef = useRef(text);
@@ -748,101 +756,114 @@ useEffect(() => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages.length]);
 
-  // Polling
-  useEffect(() => {
-    const poll = async () => {
-      if (document.hidden) return;
-      try {
-        const after = lastTimeRef.current
-          ? `&after=${encodeURIComponent(lastTimeRef.current)}`
-          : "";
-        const res = await fetch(
-          `/api/audits/${auditId}/chat?channel=${encodeURIComponent(channel)}${after}`,
-          { cache: "no-store" },
-        );
-        if (!res.ok) { setLiveStatus("error"); return; }
-        setLiveStatus("live");
-        const newMsgs = (await res.json()) as Message[];
-        if (newMsgs.length > 0) {
-          if (rightPanel && !savingRef.current && textRef.current === savedContentRef.current) {
-            const latest = newMsgs.at(-1)!;
-            setText(latest.text);
-            savedContentRef.current = latest.text;
-            savedMsgIdsRef.current = [latest.id];
-          }
-          setMessages((prev) => {
-            const existingMap = new Map(prev.map((m) => [m.id, m]));
-            let updated = false;
-            const freshList: (Message & { _key?: string; isNew?: boolean })[] = [];
-
-            for (const m of newMsgs) {
-              const existing = existingMap.get(m.id);
-              if (existing) {
-                // Update edited messages in-place
-                if (m.editedAt && m.editedAt !== existing.editedAt) {
-                  existingMap.set(m.id, { ...existing, text: m.text, editedAt: m.editedAt });
-                  updated = true;
-                }
-              } else if (!m.id.startsWith("temp-")) {
-                freshList.push({ ...m, _key: crypto.randomUUID(), isNew: true });
-              }
-            }
-
-            if (freshList.length > 0) {
-              lastTimeRef.current = newMsgs.at(-1)!.time;
-              if (!isAtBottom) setUnreadCount((c) => c + freshList.length);
-              setTimeout(() => {
-                setMessages((prev2) =>
-                  prev2.map((m) => (m.isNew ? { ...m, isNew: false } : m)),
-                );
-              }, 1200);
-            }
-
-            if (!updated && freshList.length === 0) return prev;
-
-            const merged = prev.map((m) => existingMap.get(m.id) ?? m);
-            return [...merged, ...freshList];
-          });
+  // Incremental fetch — called on SSE "chat" event or visibility change
+  const fetchIncremental = useCallback(async () => {
+    if (document.hidden) return;
+    try {
+      const after = lastTimeRef.current
+        ? `&after=${encodeURIComponent(lastTimeRef.current)}`
+        : "";
+      const res = await fetch(
+        `/api/audits/${auditId}/chat?channel=${encodeURIComponent(channel)}${after}`,
+        { cache: "no-store" },
+      );
+      if (!res.ok) { setLiveStatus("error"); return; }
+      setLiveStatus("live");
+      const newMsgs = (await res.json()) as Message[];
+      if (newMsgs.length > 0) {
+        if (rightPanel && !savingRef.current && textRef.current === savedContentRef.current) {
+          const latest = newMsgs.at(-1)!;
+          setText(latest.text);
+          savedContentRef.current = latest.text;
+          savedMsgIdsRef.current = [latest.id];
         }
-      } catch { setLiveStatus("error"); }
-    };
-    const id = setInterval(poll, 2000);
-    const onVisible = () => { if (!document.hidden) void poll(); };
-    document.addEventListener("visibilitychange", onVisible);
-    return () => { clearInterval(id); document.removeEventListener("visibilitychange", onVisible); };
+        setMessages((prev) => {
+          const existingMap = new Map(prev.map((m) => [m.id, m]));
+          let updated = false;
+          const freshList: (Message & { _key?: string; isNew?: boolean })[] = [];
+
+          for (const m of newMsgs) {
+            const existing = existingMap.get(m.id);
+            if (existing) {
+              if (m.editedAt && m.editedAt !== existing.editedAt) {
+                existingMap.set(m.id, { ...existing, text: m.text, editedAt: m.editedAt });
+                updated = true;
+              }
+            } else if (!m.id.startsWith("temp-")) {
+              freshList.push({ ...m, _key: crypto.randomUUID(), isNew: true });
+            }
+          }
+
+          if (freshList.length > 0) {
+            lastTimeRef.current = newMsgs.at(-1)!.time;
+            if (!isAtBottom) setUnreadCount((c) => c + freshList.length);
+            setTimeout(() => {
+              setMessages((prev2) =>
+                prev2.map((m) => (m.isNew ? { ...m, isNew: false } : m)),
+              );
+            }, 1200);
+          }
+
+          if (!updated && freshList.length === 0) return prev;
+          const merged = prev.map((m) => existingMap.get(m.id) ?? m);
+          return [...merged, ...freshList];
+        });
+      }
+    } catch { setLiveStatus("error"); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auditId, channel, rightPanel]);
 
-  // Full sync every 6s to pick up deletes and edits made by other users
-  useEffect(() => {
-    const fullSync = async () => {
-      if (document.hidden) return;
-      try {
-        const res = await fetch(
-          `/api/audits/${auditId}/chat?channel=${encodeURIComponent(channel)}`,
-          { cache: "no-store" },
-        );
-        if (!res.ok) return;
-        const allMsgs = (await res.json()) as Message[];
-        if (rightPanel && !savingRef.current && textRef.current === savedContentRef.current) {
-          const latest = allMsgs.at(-1);
-          const nextText = latest?.text ?? "";
-          setText(nextText);
-          savedContentRef.current = nextText;
-          savedMsgIdsRef.current = latest ? [latest.id] : [];
-        }
-        setMessages((prev) => {
-          const keyMap = new Map(prev.map((m) => [m.id, m._key]));
-          const temps = prev.filter((m) => m.id.startsWith("temp-"));
-          return [...allMsgs.map((m) => ({ ...m, _key: keyMap.get(m.id) ?? crypto.randomUUID() })), ...temps];
-        });
-        if (allMsgs.length > 0) lastTimeRef.current = allMsgs.at(-1)!.time;
-      } catch { /* ignore */ }
-    };
-    const id = setInterval(fullSync, 6000);
-    return () => clearInterval(id);
+  // Full sync — called every 60s as a safety net for missed events (deletes, edits)
+  const fullSyncRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const doFullSync = useCallback(async () => {
+    if (document.hidden) return;
+    try {
+      const res = await fetch(
+        `/api/audits/${auditId}/chat?channel=${encodeURIComponent(channel)}`,
+        { cache: "no-store" },
+      );
+      if (!res.ok) return;
+      const allMsgs = (await res.json()) as Message[];
+      if (rightPanel && !savingRef.current && textRef.current === savedContentRef.current) {
+        const latest = allMsgs.at(-1);
+        const nextText = latest?.text ?? "";
+        setText(nextText);
+        savedContentRef.current = nextText;
+        savedMsgIdsRef.current = latest ? [latest.id] : [];
+      }
+      setMessages((prev) => {
+        const keyMap = new Map(prev.map((m) => [m.id, m._key]));
+        const temps = prev.filter((m) => m.id.startsWith("temp-"));
+        return [...allMsgs.map((m) => ({ ...m, _key: keyMap.get(m.id) ?? crypto.randomUUID() })), ...temps];
+      });
+      if (allMsgs.length > 0) lastTimeRef.current = allMsgs.at(-1)!.time;
+    } catch { /* ignore */ }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auditId, channel]);
+
+  // Receive SSE events forwarded from the parent ChatsUI via context (single shared connection)
+  const streamEvent = useContext(AuditStreamContext);
+  useEffect(() => {
+    if (!streamEvent || streamEvent === "connected") return;
+    if (streamEvent === "chat") void fetchIncremental();
+    if (streamEvent === "typing") void fetchTyping();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [streamEvent]);
+
+  // Visibility change: re-fetch on tab focus
+  useEffect(() => {
+    const onVisible = () => { if (!document.hidden) void fetchIncremental(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 60s full-sync fallback
+  useEffect(() => {
+    fullSyncRef.current = setInterval(() => void doFullSync(), 60_000);
+    return () => { if (fullSyncRef.current) clearInterval(fullSyncRef.current); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auditId, channel, rightPanel]);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];

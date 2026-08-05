@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { requireAdmin } from "~/server/helpers/currentUser";
 import { logActivity } from "~/server/helpers/logActivity";
 import { computeClosedAt } from "~/server/lib/requestStatus";
+import { emitAuditEvent } from "~/server/lib/event-bus";
 
 export async function updateRequestStatus(
   requestId: string,
@@ -65,6 +66,8 @@ export async function updateRequestStatus(
       notifyUserIds: notifyIds,
     });
 
+    emitAuditEvent(auditId, "kanban");
+    emitAuditEvent(auditId, "tab-counts");
     revalidatePath(`/adminDashboard/audits/${auditId}`);
     return { ok: true };
   } catch (error) {
@@ -122,6 +125,8 @@ export async function cancelRequest(
       },
     });
 
+    emitAuditEvent(auditId, "kanban");
+    emitAuditEvent(auditId, "tab-counts");
     revalidatePath(`/adminDashboard/audits/${auditId}`);
     return { ok: true };
   } catch (error) {
@@ -180,6 +185,8 @@ export async function reworkRequest(
       },
     });
 
+    emitAuditEvent(auditId, "kanban");
+    emitAuditEvent(auditId, "tab-counts");
     revalidatePath(`/adminDashboard/audits/${auditId}`);
     return { ok: true };
   } catch (error) {

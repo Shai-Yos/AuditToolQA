@@ -96,12 +96,17 @@ export function FrRequestsStrip({
     }
   }, [auditId, frIndex, storageKey]);
 
-  // Initial fetch + polling every 15s
+  // Initial fetch + SSE-driven refetch
   useEffect(() => {
     void fetchRequests();
-    const id = setInterval(() => void fetchRequests(), 15_000);
-    return () => clearInterval(id);
-  }, [fetchRequests]);
+    const es = new EventSource(`/api/audits/${auditId}/stream`);
+    es.onmessage = (e) => {
+      if (e.data === "requests" || e.data === "kanban") void fetchRequests();
+    };
+    const onVisible = () => { if (!document.hidden) void fetchRequests(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => { es.close(); document.removeEventListener("visibilitychange", onVisible); };
+  }, [auditId, fetchRequests]);
 
   const toggleCollapsed = () => {
     setCollapsed((v) => {

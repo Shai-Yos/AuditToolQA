@@ -1,4 +1,5 @@
 import { db } from "@/server/db";
+import { emitNotification } from "@/server/lib/event-bus";
 
 export type NotificationType =
   | "AUDIT_ASSIGNED"
@@ -106,6 +107,11 @@ export async function createNotifications(
         linkUser: n.linkUser ?? null,
       })),
     });
+
+    // Push SSE event to each recipient's notification stream
+    for (const n of allowed) {
+      emitNotification(n.userId);
+    }
   } catch {
     // Never let notification creation crash a real operation
   }

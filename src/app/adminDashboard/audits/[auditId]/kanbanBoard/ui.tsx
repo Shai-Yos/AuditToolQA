@@ -84,27 +84,15 @@ export default function KanbanBoardUI({
 
   useEffect(() => {
     const auditId = audit.id;
-    let lastUpdatedAt: string | null = null;
-    const tick = async () => {
-      if (document.hidden) return;
-      try {
-        const res = await fetch(`/api/audits/${auditId}/last-updated`);
-        if (!res.ok) return;
-        const data = (await res.json()) as { updatedAt: string | null };
-        if (lastUpdatedAt === null) {
-          lastUpdatedAt = data.updatedAt;
-        } else if (data.updatedAt !== lastUpdatedAt) {
-          lastUpdatedAt = data.updatedAt;
-          router.refresh();
-        }
-      } catch { /* ignore */ }
+    const es = new EventSource(`/api/audits/${auditId}/stream`);
+    es.onmessage = (e) => {
+      if (e.data === "kanban" || e.data === "requests") router.refresh();
     };
-    const onVisible = () => { if (!document.hidden) void tick(); };
+    const onVisible = () => { if (!document.hidden) router.refresh(); };
     document.addEventListener("visibilitychange", onVisible);
-    const id = setInterval(tick, 5000);
-    return () => { clearInterval(id); document.removeEventListener("visibilitychange", onVisible); };
+    return () => { es.close(); document.removeEventListener("visibilitychange", onVisible); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [router]);
+  }, [audit.id, router]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),

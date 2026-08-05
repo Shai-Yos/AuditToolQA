@@ -5,6 +5,7 @@ import { requireUser } from "@/server/helpers/currentUser";
 import { invalidateUserCache } from "@/server/lib/userPrivilegeCache";
 import { logActivity } from "@/server/helpers/logActivity";
 import { revalidatePath } from "next/cache";
+import { emitUserEvent } from "@/server/lib/event-bus";
 
 function generateId() {
   return crypto.randomUUID().replace(/-/g, "");
@@ -97,6 +98,7 @@ export async function reviewAccessRequest(input: {
         },
         notifyUserIds: [userId],
       });
+      emitUserEvent(userId, "role");
     } else {
       await db.accessRequest.update({
         where: { id: input.requestId },

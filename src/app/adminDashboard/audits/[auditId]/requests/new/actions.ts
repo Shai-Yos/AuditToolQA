@@ -4,6 +4,7 @@ import { db } from "~/server/db";
 import { requireUser } from "~/server/helpers/currentUser";
 import { logActivity } from "~/server/helpers/logActivity";
 import { Prisma } from "generated/prisma";
+import { emitAuditEvent, emitGlobalEvent } from "~/server/lib/event-bus";
 
 type State = { ok: true; redirectTo: string } | { ok: false; error: string };
 
@@ -125,6 +126,11 @@ export async function createRequest(_: State, input: FormData | CreateRequestInp
     },
     notifyUserIds: notifyIds,
   });
+
+  emitAuditEvent(auditId, "requests");
+  emitAuditEvent(auditId, "tab-counts");
+  emitAuditEvent(auditId, "kanban");
+  emitGlobalEvent("audits");
 
   const isAdminLike = currentUser.role === "ADMIN" || currentUser.role === "AUDIT_OWNER";
   const dashBase = isAdminLike ? "adminDashboard" : "userDashboard";

@@ -4,6 +4,7 @@ import { db } from "@/server/db";
 import { requireUser } from "@/server/helpers/currentUser";
 import { createNotifications } from "@/server/helpers/notifications";
 import { revalidatePath } from "next/cache";
+import { emitFeedbackEvent } from "@/server/lib/event-bus";
 
 export async function addFeedbackComment(feedbackId: string, content: string) {
   const user = await requireUser();
@@ -70,6 +71,7 @@ export async function addFeedbackComment(feedbackId: string, content: string) {
     }
   }
 
+  emitFeedbackEvent();
   revalidatePath("/adminDashboard/feedback");
   revalidatePath("/userDashboard/my-feedback");
 
@@ -95,6 +97,7 @@ export async function deleteFeedback(feedbackId: string) {
 
   await db.feedback.delete({ where: { id: feedbackId } });
 
+  emitFeedbackEvent();
   revalidatePath("/adminDashboard/feedback");
   revalidatePath("/userDashboard/my-feedback");
 

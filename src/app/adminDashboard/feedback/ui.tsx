@@ -53,10 +53,10 @@ export function FeedbackListUI({ feedbacks, currentUserId, currentUserName, curr
     setDeletingId(null);
   }
 
-  // Auto-refresh every 10 seconds
   useEffect(() => {
-    const interval = setInterval(() => router.refresh(), 10000);
-    return () => clearInterval(interval);
+    const es = new EventSource("/api/stream/feedback");
+    es.onmessage = () => router.refresh();
+    return () => es.close();
   }, [router]);
 
   useEffect(() => {

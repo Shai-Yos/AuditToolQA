@@ -88,43 +88,27 @@ export default function KanbanBoardUI({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [audit.id, audit.title, canCreateRequest]);
 
-  // Poll roles every 5s so permission changes take effect without a page reload
+  // SSE: refresh roles and board on audit events
   useEffect(() => {
-    const poll = async () => {
+    const auditId = audit.id;
+    const fetchRoles = async () => {
       try {
-        const res = await fetch(`/api/audits/${audit.id}/assignment`);
+        const res = await fetch(`/api/audits/${auditId}/assignment`);
         if (!res.ok) return;
         const data = (await res.json()) as { roles: string };
         if (data.roles !== undefined) setLiveRoles(data.roles);
       } catch { /* ignore */ }
     };
-    const id = setInterval(poll, 5000);
-    return () => clearInterval(id);
-  }, [audit.id]);
-
-  useEffect(() => {
-    const auditId = audit.id;
-    let lastUpdatedAt: string | null = null;
-    const tick = async () => {
-      if (document.hidden) return;
-      try {
-        const res = await fetch(`/api/audits/${auditId}/last-updated`);
-        if (!res.ok) return;
-        const data = (await res.json()) as { updatedAt: string | null };
-        if (lastUpdatedAt === null) {
-          lastUpdatedAt = data.updatedAt;
-        } else if (data.updatedAt !== lastUpdatedAt) {
-          lastUpdatedAt = data.updatedAt;
-          router.refresh();
-        }
-      } catch { /* ignore */ }
+    const es = new EventSource(`/api/audits/${auditId}/stream`);
+    es.onmessage = (e) => {
+      if (e.data === "kanban" || e.data === "requests") router.refresh();
+      if (e.data === "assignment") void fetchRoles();
     };
-    const onVisible = () => { if (!document.hidden) void tick(); };
+    const onVisible = () => { if (!document.hidden) router.refresh(); };
     document.addEventListener("visibilitychange", onVisible);
-    const id = setInterval(tick, 5000);
-    return () => { clearInterval(id); document.removeEventListener("visibilitychange", onVisible); };
+    return () => { es.close(); document.removeEventListener("visibilitychange", onVisible); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [router]);
+  }, [audit.id, router]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),

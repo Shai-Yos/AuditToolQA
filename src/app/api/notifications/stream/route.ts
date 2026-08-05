@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { db } from "@/server/db";
 import { auth } from "@/auth";
+import { bus } from "@/server/lib/event-bus";
 
 export const dynamic = "force-dynamic";
 
@@ -21,37 +22,27 @@ export async function GET(req: NextRequest) {
 
   const userId = user.id;
   const encoder = new TextEncoder();
-  let closed = false;
 
   const stream = new ReadableStream({
     async start(controller) {
-      // Track the latest notification ID we've sent so we only push new ones
-      const latest = await db.notification.findFirst({
-        where: { userId },
-        orderBy: { createdAt: "desc" },
-        select: { createdAt: true },
-      });
-      let lastChecked = latest?.createdAt ?? new Date();
+      let lastChecked = new Date();
 
       const send = (data: string) => {
         try {
           controller.enqueue(encoder.encode(`data: ${data}\n\n`));
         } catch {
-          closed = true;
+          // controller already closed
         }
       };
 
       // Send initial heartbeat
       send(JSON.stringify({ type: "connected" }));
 
-      const poll = async () => {
-        if (closed) return;
+      // Push new notifications when the event bus fires for this user
+      const onNotification = async () => {
         try {
           const newNotifications = await db.notification.findMany({
-            where: {
-              userId,
-              createdAt: { gt: lastChecked },
-            },
+            where: { userId, createdAt: { gt: lastChecked } },
             orderBy: { createdAt: "asc" },
           });
 
@@ -62,29 +53,17 @@ export async function GET(req: NextRequest) {
             const unreadCount = await db.notification.count({
               where: { userId, read: false, createdAt: { gte: todayStart } },
             });
-            send(
-              JSON.stringify({
-                type: "new",
-                notifications: newNotifications,
-                unreadCount,
-              }),
-            );
+            send(JSON.stringify({ type: "new", notifications: newNotifications, unreadCount }));
           }
         } catch {
           // DB error — skip this tick
         }
-
-        if (!closed) {
-          setTimeout(() => void poll(), 3000);
-        }
       };
 
-      // Start polling loop
-      void poll();
+      bus.on(`notifications:${userId}`, onNotification);
 
-      // Handle client disconnect via abort signal
       req.signal.addEventListener("abort", () => {
-        closed = true;
+        bus.off(`notifications:${userId}`, onNotification);
         try { controller.close(); } catch { /* already closed */ }
       });
     },

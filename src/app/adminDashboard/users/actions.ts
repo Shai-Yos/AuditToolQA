@@ -5,6 +5,7 @@ import { requireUser } from "@/server/helpers/currentUser";
 import { invalidateUserCache } from "@/server/lib/userPrivilegeCache";
 import { setUserAzureGroupRole, getAzureOidByEmail } from "@/server/lib/graphClient";
 import { revalidatePath } from "next/cache";
+import { emitUserEvent } from "@/server/lib/event-bus";
 
 const VALID_ROLES = ["ADMIN", "AUDIT_OWNER", "USER"] as const;
 type AppRole = (typeof VALID_ROLES)[number];
@@ -45,6 +46,7 @@ export async function changeUserRole(
     });
 
     invalidateUserCache(userId);
+    emitUserEvent(userId, "role");
     revalidatePath("/adminDashboard/users");
 
     return { success: true };
@@ -140,6 +142,7 @@ export async function setUserActive(
     });
 
     invalidateUserCache(userId);
+    emitUserEvent(userId, "role");
     revalidatePath("/adminDashboard/users");
 
     return { success: true };

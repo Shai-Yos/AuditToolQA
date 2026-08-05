@@ -60,45 +60,11 @@ export default function AdminDashboardClient({
   const [auditFilter, setAuditFilter] = useState<"all" | "myAudits" | "assignedToMe">("all");
 
   useEffect(() => {
-    let lastUpdatedAt: string | null = null;
-    let lastCount: number | null = null;
-
-    const tick = async () => {
-      if (document.hidden) return;
-
-      try {
-        const res = await fetch("/api/last-updated");
-        if (!res.ok) return;
-
-        const data = (await res.json()) as {
-          updatedAt: string | null;
-          auditCount: number;
-        };
-
-        const changed =
-          (lastUpdatedAt !== null && data.updatedAt !== lastUpdatedAt) ||
-          (lastCount !== null && data.auditCount !== lastCount);
-
-        lastUpdatedAt = data.updatedAt;
-        lastCount = data.auditCount;
-
-        if (changed) router.refresh();
-      } catch {
-        // ignore
-      }
-    };
-
-    const onVisible = () => {
-      if (!document.hidden) void tick();
-    };
-
+    const es = new EventSource("/api/stream");
+    es.onmessage = (e) => { if (e.data === "audits") router.refresh(); };
+    const onVisible = () => { if (!document.hidden) router.refresh(); };
     document.addEventListener("visibilitychange", onVisible);
-    const id = setInterval(tick, 10000);
-
-    return () => {
-      clearInterval(id);
-      document.removeEventListener("visibilitychange", onVisible);
-    };
+    return () => { es.close(); document.removeEventListener("visibilitychange", onVisible); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

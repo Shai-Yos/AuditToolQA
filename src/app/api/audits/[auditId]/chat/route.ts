@@ -9,6 +9,7 @@ import {
 } from "@/server/lib/roomRoles";
 import { createNotifications } from "@/server/helpers/notifications";
 import { getCachedAuditPrivilege } from "@/server/lib/userPrivilegeCache";
+import { emitAuditEvent } from "@/server/lib/event-bus";
 
 export async function GET(
   req: NextRequest,
@@ -296,6 +297,8 @@ export async function POST(
     }
   })();
 
+  emitAuditEvent(auditId, "chat");
+
   return NextResponse.json({
     ok: true,
     message: {
@@ -419,6 +422,8 @@ export async function PATCH(
     data: { text: finalText, editedAt: new Date(), authorName: updatedAuthorName },
   });
 
+  emitAuditEvent(auditId, "chat");
+
   return NextResponse.json({
     ok: true,
     message: {
@@ -491,6 +496,8 @@ export async function DELETE(
   }
 
   await db.chatMessage.delete({ where: { id: messageId } });
+
+  emitAuditEvent(auditId, "chat");
 
   return NextResponse.json({ ok: true });
 }

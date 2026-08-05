@@ -6,6 +6,7 @@ import { requireAdmin, requireUser } from "@/server/helpers/currentUser";
 import { logActivity } from "@/server/helpers/logActivity";
 import { redirect } from "next/navigation";
 import { createCalendarEvent, updateCalendarEvent, cancelCalendarEvent, buildEventBody } from "@/server/lib/outlookCalendar";
+import { emitAuditEvent, emitGlobalEvent } from "@/server/lib/event-bus";
 
 type State = { ok: true; saved?: boolean } | { ok: false; error: string };
 
@@ -562,6 +563,8 @@ export async function updateAudit(
     return { ok: false, error: "Failed to update audit" };
   }
 
+  emitAuditEvent(auditId, "meta");
+  emitGlobalEvent("audits");
   if (noRedirect) return { ok: true, saved: true };
   redirect(`/adminDashboard/audits/${auditId}/chats`);
   // Note: the noRedirect branch returns before reaching here

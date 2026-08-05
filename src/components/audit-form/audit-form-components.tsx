@@ -35,13 +35,19 @@ export function RoomAssigner({
   onRemoveCustomRole?: (roleName: string, userId: string) => void;
 }) {
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [pending, setPending] = useState<{ id: string; name: string } | null>(null);
   const [showCustomInput, setShowCustomInput] = useState(false);
   const [customRoleName, setCustomRoleName] = useState("");
 
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
   const { data: results = [], isLoading } = api.user.searchDbUsers.useQuery(
-    { query: search },
-    { enabled: search.length >= 2 }
+    { query: debouncedSearch },
+    { enabled: debouncedSearch.length >= 2 }
   );
 
   const allAssigned: Array<{ id: string; role: RoleConfig; isCustom?: boolean; customRoleName?: string }> = [

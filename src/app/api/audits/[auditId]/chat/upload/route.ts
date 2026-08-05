@@ -7,6 +7,7 @@ import { canAccessTranscription, canAccessComm, roleForChannel } from "@/server/
 import { createNotifications } from "@/server/helpers/notifications";
 import { getCachedAuditPrivilege } from "@/server/lib/userPrivilegeCache";
 import { uploadFile } from "@/server/lib/oneDriveClient";
+import { emitAuditEvent } from "@/server/lib/event-bus";
 
 const ALLOWED_TYPES = new Set([
   "application/pdf",
@@ -177,6 +178,8 @@ export async function POST(
   } catch {
     // Never let notification crash the upload response
   }
+
+  emitAuditEvent(auditId, "chat");
 
   return NextResponse.json({
     ok: true,

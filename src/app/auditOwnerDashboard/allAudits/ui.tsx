@@ -30,26 +30,11 @@ export default function AllAuditsOwnerClient({ audits }: { audits: AuditCardVM[]
   const [auditFilter, setAuditFilter] = useState<"all" | "myAudits" | "assignedToMe">("all");
 
   useEffect(() => {
-    let lastUpdatedAt: string | null = null;
-    let lastCount: number | null = null;
-    const tick = async () => {
-      if (document.hidden) return;
-      try {
-        const res = await fetch("/api/last-updated");
-        if (!res.ok) return;
-        const data = (await res.json()) as { updatedAt: string | null; auditCount: number };
-        const changed =
-          (lastUpdatedAt !== null && data.updatedAt !== lastUpdatedAt) ||
-          (lastCount !== null && data.auditCount !== lastCount);
-        lastUpdatedAt = data.updatedAt;
-        lastCount = data.auditCount;
-        if (changed) router.refresh();
-      } catch { /* ignore */ }
-    };
-    const onVisible = () => { if (!document.hidden) void tick(); };
+    const es = new EventSource("/api/stream");
+    es.onmessage = (e) => { if (e.data === "audits") router.refresh(); };
+    const onVisible = () => { if (!document.hidden) router.refresh(); };
     document.addEventListener("visibilitychange", onVisible);
-    const id = setInterval(tick, 10000);
-    return () => { clearInterval(id); document.removeEventListener("visibilitychange", onVisible); };
+    return () => { es.close(); document.removeEventListener("visibilitychange", onVisible); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -224,47 +209,6 @@ export default function AllAuditsOwnerClient({ audits }: { audits: AuditCardVM[]
             )}
           </div>
         </div>
-      </div>
-    </div>
-  );
-}
-
-function AssigneeAvatars({ assignees }: { assignees: { name: string; image?: string | null }[] }) {
-  if (assignees.length === 0) return null;
-  const shown = assignees.slice(0, 4);
-  const extra = assignees.length - shown.length;
-  const initials = (name: string) => {
-    const local = name.includes("@") ? (name.split("@")[0] ?? name) : name;
-    const parts = local.replace(/\(.*?\)/g, "").trim().split(/[\s._\-]+/).filter(Boolean);
-    if (parts.length === 0) return "?";
-    if (parts.length === 1) return (parts[0] ?? "?").slice(0, 2).toUpperCase();
-    return (((parts[0]?.[0] ?? "") + (parts[parts.length - 1]?.[0] ?? "")).toUpperCase() || "?");
-  };
-  return (
-    <div className="flex items-center gap-2">
-      <span className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-        </svg>
-        Assigned
-      </span>
-      <div className="flex -space-x-2">
-        {shown.map((u, i) => (
-          <span key={i} title={u.name} className="inline-flex h-6 w-6 shrink-0 overflow-hidden rounded-full bg-slate-600 ring-2 ring-white">
-            {u.image ? (
-              <img src={u.image} alt={u.name} className="h-full w-full object-cover" />
-            ) : (
-              <span className="flex h-full w-full items-center justify-center text-[9px] font-bold text-white">
-                {initials(u.name)}
-              </span>
-            )}
-          </span>
-        ))}
-        {extra > 0 && (
-          <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-200 ring-2 ring-white text-[9px] font-bold text-slate-600">
-            +{extra}
-          </span>
-        )}
       </div>
     </div>
   );

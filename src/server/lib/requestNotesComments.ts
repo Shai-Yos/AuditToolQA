@@ -4,6 +4,7 @@ import { db } from "~/server/db";
 import { requireUser } from "~/server/helpers/currentUser";
 import { revalidatePath } from "next/cache";
 import { createNotifications } from "~/server/helpers/notifications";
+import { emitRequestEvent } from "~/server/lib/event-bus";
 
 // ─── Notes ───────────────────────────────────────────────────────────────────
 
@@ -19,6 +20,7 @@ export async function saveRequestNote(requestId: string, auditId: string, text: 
     },
   });
 
+  emitRequestEvent(requestId, "notes");
   revalidatePath(`/adminDashboard/audits/${auditId}/requests/${requestId}`);
   revalidatePath(`/userDashboard/audits/${auditId}/requests/${requestId}`);
   return { ok: true as const };
@@ -139,6 +141,7 @@ export async function addRequestComment(requestId: string, auditId: string, text
     await createNotifications(notifications);
   }
 
+  emitRequestEvent(requestId, "comments");
   revalidatePath(`/adminDashboard/audits/${auditId}/requests/${requestId}`);
   revalidatePath(`/userDashboard/audits/${auditId}/requests/${requestId}`);
   return { ok: true as const };
@@ -159,6 +162,7 @@ export async function deleteRequestComment(commentId: string, requestId: string,
       data: { updatedAt: new Date() },
     }),
   ]);
+  emitRequestEvent(requestId, "comments");
   revalidatePath(`/adminDashboard/audits/${auditId}/requests/${requestId}`);
   revalidatePath(`/userDashboard/audits/${auditId}/requests/${requestId}`);
   return { ok: true as const };

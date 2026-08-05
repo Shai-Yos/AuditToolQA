@@ -27,7 +27,6 @@ const AuditNavContext = createContext<AuditNavCtx>({
   tabDots: {},
 });
 
-const POLL_INTERVAL = 10_000; // 10 s
 const TAB_KEYS = ["requests", "kanban", "assignees", "chat"] as const;
 
 export function AuditNavProvider({ children }: { children: ReactNode }) {
@@ -70,7 +69,37 @@ export function AuditNavProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  // Poll tab-counts for the active audit
+  // Fetch tab-counts for the active audit and update dots
+  const fetchTabCounts = useCallback(async (auditId: string) => {
+    try {
+      const res = await fetch(`/api/audits/${auditId}/tab-counts`);
+      if (!res.ok) return;
+      const data = (await res.json()) as Record<string, number>;
+
+      const newDots: TabDots = {};
+      for (const tab of TAB_KEYS) {
+        const key = `${auditId}:${tab}`;
+        const count = data[tab] ?? 0;
+        prevCounts.current[key] = count;
+
+        if (seenCounts.current[key] === undefined) {
+          seenCounts.current[key] = count;
+        }
+
+        const unseen = count > seenCounts.current[key]!;
+        newDots[tab] = unseen;
+      }
+
+      setTabDots((prev) => {
+        const changed = TAB_KEYS.some((t) => prev[t] !== newDots[t]);
+        return changed ? newDots : prev;
+      });
+    } catch {
+      /* ignore network errors */
+    }
+  }, []);
+
+  // SSE subscription for the active audit's tab-count updates
   useEffect(() => {
     if (!activeAudit?.id) {
       setTabDots({});
@@ -78,42 +107,19 @@ export function AuditNavProvider({ children }: { children: ReactNode }) {
     }
 
     const auditId = activeAudit.id;
+    void fetchTabCounts(auditId);
 
-    const poll = async () => {
-      try {
-        const res = await fetch(`/api/audits/${auditId}/tab-counts`);
-        if (!res.ok) return;
-        const data = (await res.json()) as Record<string, number>;
-
-        const newDots: TabDots = {};
-        for (const tab of TAB_KEYS) {
-          const key = `${auditId}:${tab}`;
-          const count = data[tab] ?? 0;
-          prevCounts.current[key] = count;
-
-          // Initialise seen count on first poll
-          if (seenCounts.current[key] === undefined) {
-            seenCounts.current[key] = count;
-          }
-
-          const unseen = count > seenCounts.current[key]!;
-          newDots[tab] = unseen;
-        }
-
-        setTabDots((prev) => {
-          // Only update if something changed
-          const changed = TAB_KEYS.some((t) => prev[t] !== newDots[t]);
-          return changed ? newDots : prev;
-        });
-      } catch {
-        /* ignore network errors */
+    const es = new EventSource(`/api/audits/${auditId}/stream`);
+    es.onmessage = (e) => {
+      if (e.data === "tab-counts" || e.data === "requests" || e.data === "kanban" || e.data === "chat") {
+        void fetchTabCounts(auditId);
       }
     };
 
-    void poll();
-    const id = setInterval(poll, POLL_INTERVAL);
-    return () => clearInterval(id);
-  }, [activeAudit?.id]);
+    // Slow fallback poll every 60s
+    const id = setInterval(() => void fetchTabCounts(auditId), 60_000);
+    return () => { es.close(); clearInterval(id); };
+  }, [activeAudit?.id, fetchTabCounts]);
 
   return (
     <AuditNavContext.Provider

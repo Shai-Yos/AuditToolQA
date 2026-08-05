@@ -98,9 +98,9 @@ export default function AssigneesUI({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [audit.id, audit.title, liveCanCreate]);
 
-  // Poll roles every 5s so permission changes take effect without a page reload
+  // SSE: refresh roles when assignment changes
   useEffect(() => {
-    const poll = async () => {
+    const fetchRoles = async () => {
       try {
         const res = await fetch(`/api/audits/${audit.id}/assignment`);
         if (!res.ok) return;
@@ -111,8 +111,11 @@ export default function AssigneesUI({
         }
       } catch { /* ignore */ }
     };
-    const id = setInterval(poll, 5000);
-    return () => clearInterval(id);
+    const es = new EventSource(`/api/audits/${audit.id}/stream`);
+    es.onmessage = (e) => {
+      if (e.data === "assignment") void fetchRoles();
+    };
+    return () => es.close();
   }, [audit.id]);
 
   return (

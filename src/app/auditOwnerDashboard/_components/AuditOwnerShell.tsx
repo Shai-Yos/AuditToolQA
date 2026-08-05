@@ -65,8 +65,9 @@ export default function AuditOwnerShell({
         // network error — ignore
       }
     };
-    const id = setInterval(() => void check(), 10_000);
-    return () => clearInterval(id);
+    const es = new EventSource("/api/stream/me");
+    es.onmessage = (e) => { if (e.data === "role") void check(); };
+    return () => es.close();
   }, []);
 
   return (

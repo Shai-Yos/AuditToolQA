@@ -4,6 +4,7 @@ import { db } from "@/server/db";
 import { requireUser } from "@/server/helpers/currentUser";
 import { logActivity } from "@/server/helpers/logActivity";
 import { createNotifications } from "@/server/helpers/notifications";
+import { emitFeedbackEvent } from "@/server/lib/event-bus";
 
 type FeedbackState = { ok: true } | { ok: false; error: string };
 
@@ -62,5 +63,6 @@ export async function submitFeedback(
     // Never let notification/logging crash the feedback submission
   }
 
+  emitFeedbackEvent();
   return { ok: true };
 }

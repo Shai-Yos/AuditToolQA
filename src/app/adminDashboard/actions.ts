@@ -6,6 +6,7 @@ import { requireAdmin, requireUser } from "@/server/helpers/currentUser";
 import { logActivity } from "@/server/helpers/logActivity";
 import { buildUserRolesFromJson, extractUserIdsFromJson } from "@/server/lib/roomRoles";
 import { createCalendarEvent, deleteCalendarEvent, buildEventBody } from "@/server/lib/outlookCalendar";
+import { emitGlobalEvent } from "@/server/lib/event-bus";
 
 type CreateAuditState =
   | { ok: true }
@@ -300,6 +301,7 @@ export async function createAudit(
       });
     }
 
+    emitGlobalEvent("audits");
     const dashboardBase = admin.role === "AUDIT_OWNER" ? "/auditOwnerDashboard" : "/adminDashboard";
     redirect(`${dashboardBase}/audits/${audit.id}`);
   } catch (error) {
@@ -343,6 +345,7 @@ export async function deleteAudit(auditId: string): Promise<{ ok: boolean; error
       meta: { status: audit?.status ?? "" },
     });
 
+    emitGlobalEvent("audits");
     return { ok: true };
   } catch (error) {
     console.error("Error deleting audit:", error);

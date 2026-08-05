@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useState, useTransition, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { updateRequestAssignees, updateRequestBasic, type UpdateRequestBasicInput, type UpdateRequestAssigneesInput } from "./actions";
 import { useAuditNav } from "@/components/audit-nav-context";
@@ -203,11 +203,18 @@ export default function RequestUI({
   const [assignState, setAssignState] = useState<State>(initialState);
   const [assignSaved, setAssignSaved] = useState(false);
   const [assigneeSearch, setAssigneeSearch] = useState("");
+  const [debouncedAssigneeSearch, setDebouncedAssigneeSearch] = useState("");
   const [selectedAssignees, setSelectedAssignees] = useState<string[]>(request.assigneeIds);
   const [localPeopleMap, setLocalPeopleMap] = useState<Record<string, { id: string; name: string; email?: string | null; image?: string | null }>>({});
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedAssigneeSearch(assigneeSearch.trim()), 300);
+    return () => clearTimeout(t);
+  }, [assigneeSearch]);
+
   const { data: adResults = [], isFetching: adSearching } = api.user.searchDbUsers.useQuery(
-    { query: assigneeSearch.trim() },
-    { enabled: assigneeSearch.trim().length >= 2 }
+    { query: debouncedAssigneeSearch },
+    { enabled: debouncedAssigneeSearch.length >= 2 }
   );
   const [documents, setDocuments] = useState(request.documents);
   const [selectedStatus, setSelectedStatus] = useState(request.statusColumnId);
@@ -220,30 +227,33 @@ export default function RequestUI({
   const [noteLastEditor, setNoteLastEditor] = useState(note.lastEditedBy);
   const [noteFocused, setNoteFocused] = useState(false);
 
-  // Poll for fresh comments & notes every 5s
-  useEffect(() => {
-    const poll = async () => {
-      if (document.hidden) return;
-      try {
-        const res = await fetch(`/api/requests/${request.id}/comments-notes`);
-        if (!res.ok) return;
-        const data = await res.json() as {
-          comments: typeof comments;
-          note: { text: string; lastEditedBy: string | null; lastEditedAt: string | null };
-        };
-        setLiveComments(data.comments);
-        if (!noteFocused) {
-          setNoteText(data.note.text);
-        }
-        setNoteLastSaved(data.note.lastEditedAt);
-        setNoteLastEditor(data.note.lastEditedBy);
-      } catch { /* ignore */ }
-    };
-    const onVisible = () => { if (!document.hidden) void poll(); };
-    document.addEventListener("visibilitychange", onVisible);
-    const id = setInterval(poll, 5000);
-    return () => { clearInterval(id); document.removeEventListener("visibilitychange", onVisible); };
+  const fetchCommentsNotes = useCallback(async () => {
+    if (document.hidden) return;
+    try {
+      const res = await fetch(`/api/requests/${request.id}/comments-notes`);
+      if (!res.ok) return;
+      const data = await res.json() as {
+        comments: typeof comments;
+        note: { text: string; lastEditedBy: string | null; lastEditedAt: string | null };
+      };
+      setLiveComments(data.comments);
+      if (!noteFocused) {
+        setNoteText(data.note.text);
+      }
+      setNoteLastSaved(data.note.lastEditedAt);
+      setNoteLastEditor(data.note.lastEditedBy);
+    } catch { /* ignore */ }
   }, [request.id, noteFocused]);
+
+  useEffect(() => {
+    const es = new EventSource(`/api/stream/request/${request.id}`);
+    es.onmessage = (e) => {
+      if (e.data === "comments" || e.data === "notes") void fetchCommentsNotes();
+    };
+    const onVisible = () => { if (!document.hidden) void fetchCommentsNotes(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => { es.close(); document.removeEventListener("visibilitychange", onVisible); };
+  }, [request.id, fetchCommentsNotes]);
 
   useEffect(() => {
     if (basicState.ok) {
