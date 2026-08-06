@@ -1,7 +1,6 @@
 import { db } from "~/server/db";
 import { notFound } from "next/navigation";
 import { requireUser } from "~/server/helpers/currentUser";
-import { getUserPhoto } from "~/server/lib/graphClient";
 import RequestUI from "./ui";
 
 export default async function Page({
@@ -30,6 +29,7 @@ export default async function Page({
       },
     }),
     db.user.findMany({
+      where: { auditsAssigned: { some: { auditId } } },
       select: { id: true, name: true, email: true, image: true },
       orderBy: { name: "asc" },
     }),
@@ -40,15 +40,6 @@ export default async function Page({
   ]);
 
   if (!request) return notFound();
-
-  // Fetch Azure AD photos for all users in parallel
-  const photoMap = new Map<string, string | null>();
-  await Promise.all(
-    allUsers.map(async (u) => {
-      const photo = await getUserPhoto(u.id).catch(() => null);
-      photoMap.set(u.id, photo);
-    })
-  );
 
   return (
     <RequestUI
@@ -70,13 +61,13 @@ export default async function Page({
       auditPeople={allUsers.map((u) => ({
         id: u.id,
         name: u.name ?? u.email ?? u.id,
-        image: photoMap.get(u.id) ?? u.image ?? null,
+        image: u.image ?? null,
       }))}
       statusColumns={request.audit.requestStatuses.map((c) => ({ id: c.id, name: c.name }))}
       note={{ text: request.noteText ?? "", lastEditedBy: request.noteLastEditedBy ?? null, lastEditedAt: request.noteLastEditedAt?.toISOString() ?? null }}
       currentUserId={currentUser.id}
       currentUserName={currentUser.name ?? currentUser.email ?? currentUser.id}
-      currentUserImage={photoMap.get(currentUser.id) ?? currentUser.image ?? null}
+      currentUserImage={currentUser.image ?? null}
       comments={comments.map((c) => ({ id: c.id, authorId: c.authorId, authorName: c.authorName, authorImage: c.authorImage, text: c.text, createdAt: c.createdAt.toISOString() }))}
     />
   );

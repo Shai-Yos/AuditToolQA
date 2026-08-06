@@ -142,12 +142,9 @@ export async function POST(
   // Use cached privilege data (refreshed every ~5 min) to avoid DB queries on every message
   const privilege = await getCachedAuditPrivilege(user.id, auditId);
 
-  // AUDIT_OWNER: check if they own this audit — if so, treat like admin
-  let isAuditOwnerOfThis = false;
-  if (user.role === "AUDIT_OWNER") {
-    const auditOwnerCheck = await db.audit.findUnique({ where: { id: auditId }, select: { createdById: true } });
-    isAuditOwnerOfThis = auditOwnerCheck?.createdById === user.id;
-  }
+  // AUDIT_OWNER: use createdById from privilege cache — avoids an extra DB round-trip
+  const isAuditOwnerOfThis =
+    user.role === "AUDIT_OWNER" && privilege.createdById === user.id;
 
   let effectiveRole = "";
   if (user.role !== "ADMIN" && !isAuditOwnerOfThis) {
@@ -341,18 +338,15 @@ export async function PATCH(
     return NextResponse.json({ error: "Message not found" }, { status: 404 });
   }
 
-  // AUDIT_OWNER: check ownership for edit permission
-  let isOwnerForPatch = false;
-  if (user.role === "AUDIT_OWNER") {
-    const ownerCheck = await db.audit.findUnique({ where: { id: auditId }, select: { createdById: true } });
-    isOwnerForPatch = ownerCheck?.createdById === user.id;
-  }
+  // AUDIT_OWNER: use createdById from privilege cache — avoids an extra DB round-trip
+  const privilege = await getCachedAuditPrivilege(user.id, auditId);
+  const isOwnerForPatch =
+    user.role === "AUDIT_OWNER" && privilege.createdById === user.id;
 
   // Only admin/audit-owner or transcription-assigned users can edit transcription notes.
   if (message.channel.endsWith("-transcription")) {
     if (user.role !== "ADMIN" && !isOwnerForPatch) {
       const frNum = parseInt(message.channel.replace("fr", "").replace("-transcription", ""), 10);
-      const privilege = await getCachedAuditPrivilege(user.id, auditId);
 
       if (!privilege.assignee) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -465,26 +459,23 @@ export async function DELETE(
     return NextResponse.json({ error: "Message not found" }, { status: 404 });
   }
 
-  // AUDIT_OWNER: check ownership for delete permission
-  let isOwnerForDelete = false;
-  if (user.role === "AUDIT_OWNER") {
-    const ownerCheck = await db.audit.findUnique({ where: { id: auditId }, select: { createdById: true } });
-    isOwnerForDelete = ownerCheck?.createdById === user.id;
-  }
+  // AUDIT_OWNER: use createdById from privilege cache — avoids an extra DB round-trip
+  const privilegeForDelete = await getCachedAuditPrivilege(user.id, auditId);
+  const isOwnerForDelete =
+    user.role === "AUDIT_OWNER" && privilegeForDelete.createdById === user.id;
 
   // Only admin/audit-owner or transcription-assigned users can delete transcription notes.
   if (message.channel.endsWith("-transcription")) {
     if (user.role !== "ADMIN" && !isOwnerForDelete) {
       const frNum = parseInt(message.channel.replace("fr", "").replace("-transcription", ""), 10);
-      const privilege = await getCachedAuditPrivilege(user.id, auditId);
 
-      if (!privilege.assignee) {
+      if (!privilegeForDelete.assignee) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
 
-      const effectiveRole = privilege.roomRolesJson
-        ? buildUserRolesFromJson(privilege.roomRolesJson).get(user.id) ?? privilege.assignee.role
-        : privilege.assignee.role;
+      const effectiveRole = privilegeForDelete.roomRolesJson
+        ? buildUserRolesFromJson(privilegeForDelete.roomRolesJson).get(user.id) ?? privilegeForDelete.assignee.role
+        : privilegeForDelete.assignee.role;
 
       if (!canAccessTranscription(effectiveRole, frNum)) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });

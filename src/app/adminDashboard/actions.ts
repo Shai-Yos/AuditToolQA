@@ -111,24 +111,30 @@ export async function createAudit(
     try { userMeta = JSON.parse(userMetaJson); } catch { /* ignore */ }
 
     const confirmedUserIds: string[] = [];
-    for (const userId of assignedUserIds) {
-      const existing = await db.user.findUnique({ where: { id: userId } });
-      if (existing) {
-        confirmedUserIds.push(existing.id);
-      } else {
-        // Create placeholder user from Azure AD metadata
-        const meta = userMeta[userId];
-        const email = meta?.email;
-        if (email) {
-          try {
-            await db.user.upsert({
-              where: { email },
-              update: { name: meta?.name ?? email, image: meta?.image ?? undefined },
-              create: { id: userId, email, name: meta?.name ?? email, role: "USER", image: meta?.image ?? null },
-            });
-            confirmedUserIds.push(userId);
-          } catch {
-            // Skip if creation fails (e.g. id conflict)
+    if (assignedUserIds.length > 0) {
+      const existingUsers = await db.user.findMany({
+        where: { id: { in: assignedUserIds } },
+        select: { id: true },
+      });
+      const existingIds = new Set(existingUsers.map((u) => u.id));
+      for (const userId of assignedUserIds) {
+        if (existingIds.has(userId)) {
+          confirmedUserIds.push(userId);
+        } else {
+          // Create placeholder user from Azure AD metadata
+          const meta = userMeta[userId];
+          const email = meta?.email;
+          if (email) {
+            try {
+              await db.user.upsert({
+                where: { email },
+                update: { name: meta?.name ?? email, image: meta?.image ?? undefined },
+                create: { id: userId, email, name: meta?.name ?? email, role: "USER", image: meta?.image ?? null },
+              });
+              confirmedUserIds.push(userId);
+            } catch {
+              // Skip if creation fails (e.g. id conflict)
+            }
           }
         }
       }

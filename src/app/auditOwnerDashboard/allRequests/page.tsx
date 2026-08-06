@@ -14,6 +14,7 @@ export default async function AllRequestsOwnerPage() {
   const [requests, allAudits] = await Promise.all([
     db.request.findMany({
       orderBy: { createdAt: "desc" },
+      take: 500,
       select: {
         id: true,
         trackNumber: true,

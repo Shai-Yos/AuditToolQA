@@ -21,7 +21,7 @@ export default async function DashboardPage() {
       OR: [{ endAt: null }, { endAt: { gte: today } }],
     },
     include: {
-      requests: true,
+      _count: { select: { requests: true } },
       users: {
         take: 5,
         orderBy: { createdAt: "asc" },
@@ -40,7 +40,7 @@ export default async function DashboardPage() {
     timezone: audit.timezone ?? undefined,
     roomsCount: Math.max(audit.frontRoomsCount, audit.backRoomsCount),
     usersCount: audit.users.length,
-    requestsCount: audit.requests.length,
+    requestsCount: audit._count.requests,
     createdByName: audit.createdByName || "",
     isAssigned: myAuditIds.has(audit.id),
     assignees: audit.users.map((u) => ({

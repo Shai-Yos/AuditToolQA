@@ -173,23 +173,29 @@ export async function updateAudit(
     try { userMeta = JSON.parse(userMetaJson); } catch { /* ignore */ }
 
     const confirmedUserIds: string[] = [];
-    for (const userId of assignedUserIds) {
-      const existing = await db.user.findUnique({ where: { id: userId } });
-      if (existing) {
-        confirmedUserIds.push(existing.id);
-      } else {
-        const meta = userMeta[userId];
-        const email = meta?.email;
-        if (email) {
-          try {
-            await db.user.upsert({
-              where: { email },
-              update: { name: meta?.name ?? email, image: meta?.image ?? undefined },
-              create: { id: userId, email, name: meta?.name ?? email, role: "USER", image: meta?.image ?? null },
-            });
-            confirmedUserIds.push(userId);
-          } catch {
-            // Skip if creation fails
+    if (assignedUserIds.length > 0) {
+      const existingUsers = await db.user.findMany({
+        where: { id: { in: assignedUserIds } },
+        select: { id: true },
+      });
+      const existingIds = new Set(existingUsers.map((u) => u.id));
+      for (const userId of assignedUserIds) {
+        if (existingIds.has(userId)) {
+          confirmedUserIds.push(userId);
+        } else {
+          const meta = userMeta[userId];
+          const email = meta?.email;
+          if (email) {
+            try {
+              await db.user.upsert({
+                where: { email },
+                update: { name: meta?.name ?? email, image: meta?.image ?? undefined },
+                create: { id: userId, email, name: meta?.name ?? email, role: "USER", image: meta?.image ?? null },
+              });
+              confirmedUserIds.push(userId);
+            } catch {
+              // Skip if creation fails
+            }
           }
         }
       }
@@ -348,68 +354,8 @@ export async function updateAudit(
       return roles?.size ? `${name} as ${Array.from(roles).join(", ")}` : name;
     }).join(", ");
 
-    if (changes.length > 0) {
-      await logActivity({
-        type: "AUDIT_UPDATED",
-        actorName: admin.name ?? admin.email ?? "Admin",
-        targetId: auditId,
-        targetTitle: title,
-        meta: {
-          auditName: title,
-          changedFields: changes.join("; "),
-          status,
-          frontRooms: String(frontRoomsCount),
-          backRooms: String(backRoomsCount),
-          startAt: startAt || "",
-          endAt: endAt || "",
-        },
-      });
-    }
-
     const addedIds = assignedUserIds.filter(id => !oldAssigneeIds.has(id));
-    if (addedIds.length > 0) {
-      const addedUsers = assignedUsers.filter(u => addedIds.includes(u.id));
-      const addedNames = addedUsers.map(u => {
-        const name = u.name ?? u.email ?? "Unknown";
-        const roles = userRoles.get(u.id);
-        return roles?.size ? `${name} as ${Array.from(roles).join(", ")}` : name;
-      }).join(", ");
-      await logActivity({
-        type: "USER_ASSIGNED_AUDIT",
-        actorName: admin.name ?? admin.email ?? "Admin",
-        targetId: auditId,
-        targetTitle: title,
-        meta: {
-          auditName: title,
-          userName: addedUsers.map(u => u.name ?? u.email ?? "Unknown").join(", "),
-          assignedCount: String(addedIds.length),
-          assigneeNames: addedNames,
-        },
-        // Only notify when audit is ACTIVE (DRAFT should not bother assignees)
-        notifyUserIds: status === "ACTIVE" ? addedIds.filter(id => id !== admin.id) : [],
-      });
-    }
-
     const removedIds = Array.from(oldAssigneeIds).filter(id => !assignedUserIds.includes(id));
-    if (removedIds.length > 0) {
-      const removedUsers = await db.user.findMany({
-        where: { id: { in: removedIds } },
-        select: { name: true, email: true },
-      });
-      const removedNames = removedUsers.map(u => u.name ?? u.email ?? "Unknown").join(", ");
-      await logActivity({
-        type: "USER_UNASSIGNED_AUDIT",
-        actorName: admin.name ?? admin.email ?? "Admin",
-        targetId: auditId,
-        targetTitle: title,
-        meta: {
-          assignedCount: String(removedIds.length),
-          assigneeNames: removedNames,
-        },
-        // Only notify when audit is ACTIVE
-        notifyUserIds: status === "ACTIVE" ? removedIds : [],
-      });
-    }
 
     // Detect role changes for users who remain assigned
     const buildRolesMap = (json: string | null): Map<string, Set<string>> => {
@@ -446,24 +392,91 @@ export async function updateAudit(
       const newRoles = Array.from(userRoles.get(id) ?? []).sort().join(",");
       return oldRoles !== newRoles;
     });
-    if (roleChangedIds.length > 0) {
-      const roleChangedUsers = await db.user.findMany({ where: { id: { in: roleChangedIds } }, select: { id: true, name: true, email: true } });
-      const roleChangeSummary = roleChangedUsers.map(u => {
-        const name = u.name ?? u.email ?? "Unknown";
-        const oldR = Array.from(oldRolesMap.get(u.id) ?? []).join(", ") || "none";
-        const newR = Array.from(userRoles.get(u.id) ?? []).join(", ") || "none";
-        return `${name}: ${oldR} → ${newR}`;
-      }).join("; ");
-      await logActivity({
-        type: "USER_ROLE_UPDATED_AUDIT",
-        actorName: admin.name ?? admin.email ?? "Admin",
-        targetId: auditId,
-        targetTitle: title,
-        meta: { changes: roleChangeSummary },
-        // Only notify when audit is ACTIVE
-        notifyUserIds: status === "ACTIVE" ? roleChangedIds : [],
-      });
-    }
+
+    // Fetch any extra user lists needed for log messages, then fire all logActivity calls in parallel
+    const [removedUsers, roleChangedUsers] = await Promise.all([
+      removedIds.length > 0
+        ? db.user.findMany({ where: { id: { in: removedIds } }, select: { name: true, email: true } })
+        : Promise.resolve([] as Array<{ name: string | null; email: string | null }>),
+      roleChangedIds.length > 0
+        ? db.user.findMany({ where: { id: { in: roleChangedIds } }, select: { id: true, name: true, email: true } })
+        : Promise.resolve([] as Array<{ id: string; name: string | null; email: string | null }>),
+    ]);
+
+    const actorName = admin.name ?? admin.email ?? "Admin";
+    await Promise.all([
+      changes.length > 0
+        ? logActivity({
+            type: "AUDIT_UPDATED",
+            actorName,
+            targetId: auditId,
+            targetTitle: title,
+            meta: {
+              auditName: title,
+              changedFields: changes.join("; "),
+              status,
+              frontRooms: String(frontRoomsCount),
+              backRooms: String(backRoomsCount),
+              startAt: startAt || "",
+              endAt: endAt || "",
+            },
+          })
+        : Promise.resolve(),
+      addedIds.length > 0
+        ? (() => {
+            const addedUsers = assignedUsers.filter(u => addedIds.includes(u.id));
+            const addedNames = addedUsers.map(u => {
+              const name = u.name ?? u.email ?? "Unknown";
+              const roles = userRoles.get(u.id);
+              return roles?.size ? `${name} as ${Array.from(roles).join(", ")}` : name;
+            }).join(", ");
+            return logActivity({
+              type: "USER_ASSIGNED_AUDIT",
+              actorName,
+              targetId: auditId,
+              targetTitle: title,
+              meta: {
+                auditName: title,
+                userName: addedUsers.map(u => u.name ?? u.email ?? "Unknown").join(", "),
+                assignedCount: String(addedIds.length),
+                assigneeNames: addedNames,
+              },
+              notifyUserIds: status === "ACTIVE" ? addedIds.filter(id => id !== admin.id) : [],
+            });
+          })()
+        : Promise.resolve(),
+      removedIds.length > 0
+        ? logActivity({
+            type: "USER_UNASSIGNED_AUDIT",
+            actorName,
+            targetId: auditId,
+            targetTitle: title,
+            meta: {
+              assignedCount: String(removedIds.length),
+              assigneeNames: removedUsers.map(u => u.name ?? u.email ?? "Unknown").join(", "),
+            },
+            notifyUserIds: status === "ACTIVE" ? removedIds : [],
+          })
+        : Promise.resolve(),
+      roleChangedIds.length > 0
+        ? (() => {
+            const roleChangeSummary = roleChangedUsers.map(u => {
+              const name = u.name ?? u.email ?? "Unknown";
+              const oldR = Array.from(oldRolesMap.get(u.id) ?? []).join(", ") || "none";
+              const newR = Array.from(userRoles.get(u.id) ?? []).join(", ") || "none";
+              return `${name}: ${oldR} → ${newR}`;
+            }).join("; ");
+            return logActivity({
+              type: "USER_ROLE_UPDATED_AUDIT",
+              actorName,
+              targetId: auditId,
+              targetTitle: title,
+              meta: { changes: roleChangeSummary },
+              notifyUserIds: status === "ACTIVE" ? roleChangedIds : [],
+            });
+          })()
+        : Promise.resolve(),
+    ]);
 
     // Sync Outlook calendar event (fire-and-forget)
     // Only trigger calendar when audit is ACTIVE or transitioning to COMPLETED.

@@ -1,7 +1,6 @@
 import { db } from "~/server/db";
 import { notFound } from "next/navigation";
 import { requireUser } from "~/server/helpers/currentUser";
-import { getUserPhoto } from "~/server/lib/graphClient";
 import RequestUI from "./ui";
 
 export default async function Page({
@@ -57,20 +56,10 @@ export default async function Page({
     if (!assigneeMap.has(a.id)) assigneeMap.set(a.id, { id: a.id, name: a.name ?? a.email ?? a.id, email: a.email, image: a.image });
   }
 
-  // Fetch Azure AD photos for all people in parallel
-  const allUserIds = [...assigneeMap.keys()];
-  const photoMap = new Map<string, string | null>();
-  await Promise.all(
-    allUserIds.map(async (userId) => {
-      const photo = await getUserPhoto(userId).catch(() => null);
-      photoMap.set(userId, photo);
-    })
-  );
-
   const auditPeople = [...assigneeMap.values()].map((u) => ({
     id: u.id,
     name: u.name,
-    image: photoMap.get(u.id) ?? u.image ?? null,
+    image: u.image ?? null,
   }));
 
   return (
@@ -95,7 +84,7 @@ export default async function Page({
       note={{ text: request.noteText ?? "", lastEditedBy: request.noteLastEditedBy ?? null, lastEditedAt: request.noteLastEditedAt?.toISOString() ?? null }}
       currentUserId={currentUser.id}
       currentUserName={currentUser.name ?? currentUser.email ?? currentUser.id}
-      currentUserImage={photoMap.get(currentUser.id) ?? currentUser.image ?? null}
+      currentUserImage={currentUser.image ?? null}
       comments={comments.map((c) => ({ id: c.id, authorId: c.authorId, authorName: c.authorName, authorImage: c.authorImage, text: c.text, createdAt: c.createdAt.toISOString() }))}
     />
   );

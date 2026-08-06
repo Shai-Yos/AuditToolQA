@@ -512,6 +512,7 @@ export function ChatPanel({
   const mentionedUsersRef = useRef(new Map<string, string>());
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [liveStatus, setLiveStatus] = useState<"live" | "error">("live");
+  const liveStatusRef = useRef<"live" | "error">("live");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [contextMenu, setContextMenu] = useState<{
     messageId: string; x: number; y: number; text: string; isOwn: boolean; authorName: string;
@@ -653,14 +654,14 @@ export function ChatPanel({
         `/api/audits/${auditId}/chat?channel=${encodeURIComponent(channel)}`,
         { cache: "no-store" },
       );
-      if (!res.ok) { setLiveStatus("error"); return; }
-      setLiveStatus("live");
+      if (!res.ok) { liveStatusRef.current = "error"; setLiveStatus("error"); return; }
+      liveStatusRef.current = "live"; setLiveStatus("live");
       const allMsgs = (await res.json()) as Message[];
       const latest = allMsgs.at(-1);
       setText(latest?.text ?? "");
       setMessages(allMsgs.map((m) => ({ ...m, _key: crypto.randomUUID() })));
       if (allMsgs.length > 0) lastTimeRef.current = allMsgs.at(-1)!.time;
-    } catch { setLiveStatus("error"); }
+    } catch { liveStatusRef.current = "error"; setLiveStatus("error"); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auditId, channel, rightPanel, readOnly]);
 
@@ -707,8 +708,8 @@ export function ChatPanel({
         `/api/audits/${auditId}/chat?channel=${encodeURIComponent(channel)}${after}`,
         { cache: "no-store" },
       );
-      if (!res.ok) { setLiveStatus("error"); return; }
-      setLiveStatus("live");
+      if (!res.ok) { liveStatusRef.current = "error"; setLiveStatus("error"); return; }
+      liveStatusRef.current = "live"; setLiveStatus("live");
       const newMsgs = (await res.json()) as Message[];
       if (newMsgs.length > 0) {
         if (rightPanel && !readOnly && !savingRef.current && textRef.current === savedContentRef.current) {
@@ -749,7 +750,7 @@ export function ChatPanel({
           return [...merged, ...freshList];
         });
       }
-    } catch { setLiveStatus("error"); }
+    } catch { liveStatusRef.current = "error"; setLiveStatus("error"); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auditId, channel, rightPanel, readOnly, fetchReadOnlyTranscription]);
 
@@ -757,6 +758,8 @@ export function ChatPanel({
   const doFullSync = useCallback(async () => {
     if (rightPanel && readOnly) { void fetchReadOnlyTranscription(); return; }
     if (document.hidden) return;
+    // Skip when SSE is healthy — incremental updates cover everything
+    if (liveStatusRef.current === "live") return;
     try {
       const res = await fetch(
         `/api/audits/${auditId}/chat?channel=${encodeURIComponent(channel)}`,

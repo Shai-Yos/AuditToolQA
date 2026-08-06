@@ -32,9 +32,12 @@ export async function GET(req: NextRequest) {
     // 2. Fetch every Azure AD user (paginated)
     const azureUsers = await listAllAzureUsers();
 
-    // 3. Upsert each user into the DB
+    // 3. Upsert each user into the DB in batches to avoid timeouts on large tenants
     let upserted = 0;
     let skipped = 0;
+
+    type UpsertItem = { id: string; email: string; name: string; role: "ADMIN" | "USER" };
+    const toUpsert: UpsertItem[] = [];
 
     for (const u of azureUsers) {
       const email = u.mail ?? u.userPrincipalName;
@@ -52,25 +55,42 @@ export async function GET(req: NextRequest) {
         continue;
       }
 
-      const name = u.displayName ?? email;
+      toUpsert.push({ id: u.id, email, name: u.displayName ?? email, role });
+    }
 
-      // Always upsert by email — it's the canonical unique key.
-      // If the user already exists in the DB (regardless of what id they have),
-      // email finds them and we update name/role only.
-      // If the user is new, create with Azure OID as the id so future sign-ins
-      // can match by id directly.
+    // Always upsert by email — it's the canonical unique key.
+    // Process in chunks of 50 inside a transaction so each batch is atomic and
+    // avoids holding a single long-lived transaction over the whole tenant.
+    const CHUNK = 50;
+    for (let i = 0; i < toUpsert.length; i += CHUNK) {
+      const chunk = toUpsert.slice(i, i + CHUNK);
       try {
-        await db.user.upsert({
-          where: { email },
-          update: { name, role },
-          create: { id: u.id, email, name, role },
-        });
+        await db.$transaction(
+          chunk.map(({ id, email, name, role }) =>
+            db.user.upsert({
+              where: { email },
+              update: { name, role },
+              create: { id, email, name, role },
+            }),
+          ),
+        );
+        upserted += chunk.length;
       } catch {
-        skipped++;
-        continue;
+        // If the whole chunk fails, fall back to individual upserts so one bad
+        // record doesn't drop the rest of the batch.
+        for (const { id, email, name, role } of chunk) {
+          try {
+            await db.user.upsert({
+              where: { email },
+              update: { name, role },
+              create: { id, email, name, role },
+            });
+            upserted++;
+          } catch {
+            skipped++;
+          }
+        }
       }
-
-      upserted++;
     }
 
     return NextResponse.json({

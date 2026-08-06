@@ -7,20 +7,12 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   const session = await auth();
-  if (!session?.user?.email) {
+  // session.user.id is the Azure OID set in auth.config.ts — no DB lookup needed
+  if (!session?.user?.id) {
     return new Response("Unauthorized", { status: 401 });
   }
 
-  const user = await db.user.findUnique({
-    where: { email: session.user.email },
-    select: { id: true },
-  });
-
-  if (!user) {
-    return new Response("User not found", { status: 404 });
-  }
-
-  const userId = user.id;
+  const userId = session.user.id;
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream({

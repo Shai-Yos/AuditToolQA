@@ -25,7 +25,7 @@ export default async function AllAuditsPage() {
   const audits = await db.audit.findMany({
     orderBy: { createdAt: "desc" },
     include: {
-      requests: true,
+      _count: { select: { requests: true } },
       users: {
         take: 5,
         orderBy: { createdAt: "asc" },
@@ -48,7 +48,7 @@ export default async function AllAuditsPage() {
       endDate: a.endAt?.toISOString() ?? null,
       roomsCount,
       usersCount: a.users.length,
-      requestsCount: a.requests.length,
+      requestsCount: a._count.requests,
       createdByName: a.createdByName || "",
       isAssigned: myAuditIds.has(a.id),
       isMyAudit: a.createdById === user.id,

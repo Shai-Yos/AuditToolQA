@@ -522,6 +522,7 @@ export function ChatPanel({
   const mentionedUsersRef = useRef(new Map<string, string>());
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [liveStatus, setLiveStatus] = useState<"live" | "error">("live");
+  const liveStatusRef = useRef<"live" | "error">("live");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [contextMenu, setContextMenu] = useState<{
     messageId: string; x: number; y: number; text: string; isOwn: boolean; authorName: string;
@@ -767,8 +768,8 @@ useEffect(() => {
         `/api/audits/${auditId}/chat?channel=${encodeURIComponent(channel)}${after}`,
         { cache: "no-store" },
       );
-      if (!res.ok) { setLiveStatus("error"); return; }
-      setLiveStatus("live");
+      if (!res.ok) { liveStatusRef.current = "error"; setLiveStatus("error"); return; }
+      liveStatusRef.current = "live"; setLiveStatus("live");
       const newMsgs = (await res.json()) as Message[];
       if (newMsgs.length > 0) {
         if (rightPanel && !savingRef.current && textRef.current === savedContentRef.current) {
@@ -809,7 +810,7 @@ useEffect(() => {
           return [...merged, ...freshList];
         });
       }
-    } catch { setLiveStatus("error"); }
+    } catch { liveStatusRef.current = "error"; setLiveStatus("error"); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auditId, channel, rightPanel]);
 
@@ -817,6 +818,8 @@ useEffect(() => {
   const fullSyncRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const doFullSync = useCallback(async () => {
     if (document.hidden) return;
+    // Skip when SSE is healthy — incremental updates cover everything
+    if (liveStatusRef.current === "live") return;
     try {
       const res = await fetch(
         `/api/audits/${auditId}/chat?channel=${encodeURIComponent(channel)}`,

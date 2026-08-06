@@ -42,6 +42,9 @@ model AccessRequest {
   reviewedById   String?
   reviewedByName String?
   reviewNote     String?   @db.NVarChar(Max)
+
+  @@index([status])
+  @@index([email])
 }
 
 model Audit {
@@ -73,11 +76,13 @@ model Audit {
   createdBy     User?   @relation(fields: [createdById], references: [id])
 
   requests  Request[]
-
   users AuditAssignee[]
   requestStatuses RequestStatus[]
   chatMessages ChatMessage[]
   auditFiles  AuditFile[]
+
+  @@index([status, endAt])
+  @@index([createdById])
 }
 
 model ChatMessage {
@@ -241,6 +246,7 @@ model ActivityLog {
   createdAt   DateTime @default(now())
 
   @@index([createdAt])
+  @@index([targetId])
 }
 
 model RequestNote {

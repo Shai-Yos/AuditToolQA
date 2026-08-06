@@ -58,6 +58,7 @@ export type CachedAuditPrivilege = {
   assignee: { role: string } | null;
   auditTitle: string;
   roomRolesJson: string | null;
+  createdById: string | null;
 };
 
 const auditPrivilegeCache = new Map<string, CacheEntry<CachedAuditPrivilege>>();
@@ -81,7 +82,7 @@ export async function getCachedAuditPrivilege(
     }),
     db.audit.findUnique({
       where: { id: auditId },
-      select: { title: true, roomRolesJson: true },
+      select: { title: true, roomRolesJson: true, createdById: true },
     }),
   ]);
 
@@ -89,6 +90,7 @@ export async function getCachedAuditPrivilege(
     assignee,
     auditTitle: audit?.title ?? "",
     roomRolesJson: (audit?.roomRolesJson as string) ?? null,
+    createdById: audit?.createdById ?? null,
   };
   auditPrivilegeCache.set(key, { data: cached, expiresAt: Date.now() + CACHE_TTL_MS });
   return cached;
