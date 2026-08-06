@@ -125,6 +125,9 @@ export default async function AuditDashboardPage({
         readyBoxFiles: audit.auditFiles
           .filter((f) => f.slot === "readyBox")
           .map(mapAuditFile),
+        auditorFiles: audit.auditFiles
+          .filter((f) => f.slot === "auditors")
+          .map(mapAuditFile),
         activity: activityRows.map((a) => ({
           id: a.id,
           action: a.action,

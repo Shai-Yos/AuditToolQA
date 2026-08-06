@@ -7,11 +7,12 @@ import { useAuditNav } from "@/components/audit-nav-context";
 import { deleteAudit } from "@/app/adminDashboard/actions";
 import ExportModal, { type ExportType } from "./_components/ExportModal";
 
-type Slot = "agenda" | "readyBox";
+type Slot = "agenda" | "readyBox" | "auditors";
 
 const SLOT_LABELS: Record<Slot, string> = {
   agenda: "General",
   readyBox: "Ready Box",
+  auditors: "Auditors",
 };
 
 type AuditFileItem = {
@@ -213,6 +214,7 @@ function FileSlot({
   isAdmin,
   onUpdated,
   onPreview,
+  headerAction,
   defaultFolders,
 }: {
   slot: Slot;
@@ -221,6 +223,7 @@ function FileSlot({
   isAdmin: boolean;
   onUpdated: () => void;
   onPreview: (file: AuditFileItem) => void;
+  headerAction?: React.ReactNode;
   /** Folder paths (as segment arrays) to auto-create on first mount if missing. */
   defaultFolders?: string[][];
 }) {
@@ -635,6 +638,7 @@ function FileSlot({
               {totalEntriesHere}
             </span>
           )}
+          {headerAction}
         </div>
         <div className="flex items-center gap-2">
           {hasAnyFileHere && (
@@ -927,8 +931,8 @@ function AuditProgress({
         />
       </div>
       <div className="mt-2 flex justify-between text-[11px] font-medium text-slate-500 dark:text-slate-400">
-        <span>{new Date(startDate).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</span>
-        <span>{new Date(endDate).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</span>
+        <span>{new Date(startDate).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</span>
+        <span>{new Date(endDate).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</span>
       </div>
     </div>
   );
@@ -999,7 +1003,7 @@ function ActivityFeed({ items }: { items: ActivityItem[] }) {
           No activity yet
         </p>
       ) : (
-      <ul className="max-h-[600px] divide-y divide-slate-100 overflow-y-auto dark:divide-slate-700">
+      <ul className="max-h-[280px] divide-y divide-slate-100 overflow-y-auto dark:divide-slate-700">
         {items.map((a) => {
           const cfg = ACTIVITY_ICON[a.action] ?? { icon: "•", color: "text-slate-400" };
           return (
@@ -1028,6 +1032,242 @@ function ActivityFeed({ items }: { items: ActivityItem[] }) {
   );
 }
 
+// ─── Share Auditors Modal ──────────────────────────────────────────────────────
+
+function ShareAuditorsModal({ auditId, onClose }: { auditId: string; onClose: () => void }) {
+  const [emailsRaw, setEmailsRaw] = useState("");
+  const [message, setMessage] = useState("");
+  const [permissionLevel, setPermissionLevel] = useState<"view" | "edit">("view");
+  const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [errorText, setErrorText] = useState<string | null>(null);
+  const [result, setResult] = useState<{
+    succeeded: string[];
+    failed: string[];
+    notConfigured?: boolean;
+    warning?: string;
+    requestedPermission?: "view" | "edit";
+    appliedPermission?: "view" | "edit";
+  } | null>(null);
+
+  const parsedEntries = emailsRaw
+    .split(/[\n,;]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const validEmails = parsedEntries.filter((s) => emailRegex.test(s));
+  const invalidEmails = parsedEntries.filter((s) => !emailRegex.test(s));
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (validEmails.length === 0) {
+      setStatus("error");
+      setErrorText("Add at least one valid email address.");
+      return;
+    }
+    setStatus("loading");
+    setErrorText(null);
+    try {
+      const res = await fetch(`/api/audits/${auditId}/share-auditors`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ emails: validEmails, message, permissionLevel }),
+      });
+      const data = (await res.json()) as {
+        succeeded: string[];
+        failed: string[];
+        notConfigured?: boolean;
+        warning?: string;
+        requestedPermission?: "view" | "edit";
+        appliedPermission?: "view" | "edit";
+        error?: string;
+      };
+      if (!res.ok) {
+        setStatus("error");
+        setResult(null);
+        setErrorText(data.error ?? "Failed to send invites");
+      } else {
+        setStatus("success");
+        setResult(data);
+      }
+    } catch {
+      setStatus("error");
+      setResult(null);
+      setErrorText("Failed to send invites");
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 p-4 backdrop-blur-[2px]" onClick={onClose}>
+      <div
+        className="w-full max-w-md rounded-3xl border border-slate-200/90 bg-white p-6 shadow-2xl dark:border-slate-700 dark:bg-slate-800"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-5 flex items-center justify-between">
+          <h3 className="text-base font-semibold tracking-tight text-slate-900 dark:text-white">Share Auditors Folder</h3>
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-700 dark:hover:text-slate-300"
+          >
+            ✕
+          </button>
+        </div>
+
+        {status === "success" && result ? (
+          <div className="flex flex-col gap-4">
+            <div className={`rounded-2xl border p-4 ${result.failed.length === 0 ? "border-emerald-200 bg-emerald-50/80 dark:border-emerald-800 dark:bg-emerald-900/30" : "border-amber-200 bg-amber-50/90 dark:border-amber-800 dark:bg-amber-900/30"}`}>
+              <div className="flex items-start gap-3">
+                <div className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm ${result.failed.length === 0 ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-300" : "bg-amber-100 text-amber-700 dark:bg-amber-900/60 dark:text-amber-300"}`}>
+                  {result.failed.length === 0 ? "✓" : "!"}
+                </div>
+                <div className="min-w-0">
+                  <p className={`text-sm font-semibold ${result.failed.length === 0 ? "text-emerald-800 dark:text-emerald-200" : "text-amber-800 dark:text-amber-200"}`}>
+                    {result.failed.length === 0 ? "Access shared successfully" : "Shared with some recipients"}
+                  </p>
+                  <p className={`mt-1 text-sm ${result.failed.length === 0 ? "text-emerald-700 dark:text-emerald-300" : "text-amber-700 dark:text-amber-300"}`}>
+                    Shared with <strong>{result.succeeded.length}</strong> of <strong>{result.succeeded.length + result.failed.length}</strong> recipients.
+                  </p>
+                  {result.succeeded.length > 0 && (
+                    <ul className={`mt-2 list-disc pl-5 text-sm ${result.failed.length === 0 ? "text-emerald-700 dark:text-emerald-300" : "text-amber-700 dark:text-amber-300"}`}>
+                      {result.succeeded.map((e) => <li key={e}>{e}</li>)}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-blue-200 bg-blue-50/80 p-3 text-sm text-blue-700 dark:border-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
+              <p>
+                Access level applied: <strong>{result.appliedPermission === "edit" ? "Can edit" : "Can view"}</strong>
+              </p>
+            </div>
+            {result.notConfigured && (
+              <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                ⚠️ OneDrive is not configured — invites were not sent.
+              </p>
+            )}
+            {result.warning && (
+              <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                ⚠️ {result.warning}
+              </p>
+            )}
+            {result.failed.length > 0 && (
+              <div className="rounded-xl border border-rose-200 bg-rose-50/70 p-3 dark:border-rose-800 dark:bg-rose-900/20">
+                <p className="text-sm font-semibold text-rose-700 dark:text-rose-400">Could not share with</p>
+                <ul className="mt-1 list-disc pl-5 text-sm text-red-700 dark:text-red-400">
+                  {result.failed.map((e) => <li key={e}>{e}</li>)}
+                </ul>
+                <p className="mt-2 text-xs text-red-600 dark:text-red-300">Check the email spelling or external-sharing policy, then try again.</p>
+              </div>
+            )}
+            <div className="mt-1 flex gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setStatus("idle");
+                  setResult(null);
+                  setErrorText(null);
+                }}
+                className="flex-1 rounded-xl border border-slate-200 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700"
+              >
+                Share More
+              </button>
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex-1 rounded-xl bg-slate-900 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">
+                Email addresses
+              </label>
+              <textarea
+                value={emailsRaw}
+                onChange={(e) => setEmailsRaw(e.target.value)}
+                placeholder={"name@company.com, name2@company.com"}
+                rows={4}
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-400 dark:border-slate-600 dark:bg-slate-700 dark:text-white"
+                required
+              />
+              <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
+                <span className="rounded-full bg-green-50 px-2 py-0.5 text-green-700 dark:bg-green-900/30 dark:text-green-300">
+                  {validEmails.length} valid
+                </span>
+                {invalidEmails.length > 0 && (
+                  <span className="rounded-full bg-amber-50 px-2 py-0.5 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                    {invalidEmails.length} invalid
+                  </span>
+                )}
+                <span className="text-slate-400">Use commas, semicolons, or new lines</span>
+              </div>
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">
+                Permission level
+              </label>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => setPermissionLevel("view")}
+                  className={`rounded-xl border px-3 py-2 text-sm font-medium transition ${permissionLevel === "view" ? "border-indigo-400 bg-indigo-50 text-indigo-700 dark:border-indigo-500 dark:bg-indigo-900/30 dark:text-indigo-300" : "border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300"}`}
+                >
+                  Can view
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPermissionLevel("edit")}
+                  className={`rounded-xl border px-3 py-2 text-sm font-medium transition ${permissionLevel === "edit" ? "border-indigo-400 bg-indigo-50 text-indigo-700 dark:border-indigo-500 dark:bg-indigo-900/30 dark:text-indigo-300" : "border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300"}`}
+                >
+                  Can edit
+                </button>
+              </div>
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">
+                Message <span className="font-normal text-slate-400">(optional)</span>
+              </label>
+              <textarea
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                placeholder="You've been invited to access the Auditors folder…"
+                rows={2}
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-400 dark:border-slate-600 dark:bg-slate-700 dark:text-white"
+              />
+            </div>
+            {status === "error" && (
+              <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-400">
+                {errorText ?? "Something went wrong. Please try again."}
+              </p>
+            )}
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex-1 rounded-xl border border-slate-200 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={status === "loading" || validEmails.length === 0}
+                className="flex-1 rounded-xl bg-indigo-600 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-50"
+              >
+                {status === "loading" ? "Sending…" : `Send Invites (${validEmails.length})`}
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main UI ───────────────────────────────────────────────────────────────────
 
 type AuditDashboardProps = {
@@ -1049,6 +1289,7 @@ type AuditDashboardProps = {
     statusBreakdown: StatusBucket[];
     agendaFiles: AuditFileItem[];
     readyBoxFiles: AuditFileItem[];
+    auditorFiles: AuditFileItem[];
     activity: ActivityItem[];
   };
   isAdmin?: boolean;
@@ -1061,6 +1302,8 @@ export default function AuditDashboardUI({ audit, isAdmin = false, canCreateRequ
 
   const [agendaFiles, setAgendaFiles] = useState<AuditFileItem[]>(audit.agendaFiles);
   const [readyBoxFiles, setReadyBoxFiles] = useState<AuditFileItem[]>(audit.readyBoxFiles);
+  const [auditorFiles, setAuditorFiles] = useState<AuditFileItem[]>(audit.auditorFiles);
+  const [showShareAuditorsModal, setShowShareAuditorsModal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
@@ -1126,12 +1369,14 @@ export default function AuditDashboardUI({ audit, isAdmin = false, canCreateRequ
   };
 
   const handleUpdated = async () => {
-    const [agendaRes, readyBoxRes] = await Promise.all([
+    const [agendaRes, readyBoxRes, auditorRes] = await Promise.all([
       fetch(`/api/audits/${audit.id}/files?slot=agenda`),
       fetch(`/api/audits/${audit.id}/files?slot=readyBox`),
+      fetch(`/api/audits/${audit.id}/files?slot=auditors`),
     ]);
     if (agendaRes.ok) setAgendaFiles((await agendaRes.json()) as AuditFileItem[]);
     if (readyBoxRes.ok) setReadyBoxFiles((await readyBoxRes.json()) as AuditFileItem[]);
+    if (auditorRes.ok) setAuditorFiles((await auditorRes.json()) as AuditFileItem[]);
   };
 
   const fmtOpts: Intl.DateTimeFormatOptions = {
@@ -1167,7 +1412,8 @@ export default function AuditDashboardUI({ audit, isAdmin = false, canCreateRequ
 
   const totalFiles =
     agendaFiles.filter((f) => f.kind === "file").length +
-    readyBoxFiles.filter((f) => f.kind === "file").length;
+    readyBoxFiles.filter((f) => f.kind === "file").length +
+    auditorFiles.filter((f) => f.kind === "file").length;
 
   // Outlook calendar URL (works with Microsoft Graph event IDs in OWA)
   const outlookUrl = useMemo(() => {
@@ -1349,111 +1595,130 @@ export default function AuditDashboardUI({ audit, isAdmin = false, canCreateRequ
             </div>
           </div>
 
-          {/* Main grid layout: 2/3 main content + 1/3 activity sidebar */}
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-            {/* ─── Left: main column (2/3) ─── */}
-            <div className="flex flex-col gap-6 lg:col-span-2">
-              {/* Stats grid */}
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <Link
-                  href={`${baseRoute}/requests`}
-                  className="group flex flex-col items-center rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:shadow-md hover:ring-2 hover:ring-amber-200 dark:border-slate-700 dark:bg-slate-800 dark:hover:ring-amber-500/40"
-                >
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-50 text-xl ring-1 ring-slate-200 dark:bg-slate-700 dark:ring-slate-600">
-                    📝
-                  </div>
-                  <p className="mt-2 text-center text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                    Total Requests
-                  </p>
-                  <p className="mt-1 text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
-                    {audit.requestsCount}
-                  </p>
-                </Link>
-
-                <div className="flex flex-col items-center rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-50 text-xl ring-1 ring-slate-200 dark:bg-slate-700 dark:ring-slate-600">
-                    👤
-                  </div>
-                  <p className="mt-2 text-center text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                    My Requests
-                  </p>
-                  <p className="mt-1 text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
-                    {audit.myAssignedCount}
-                  </p>
-                </div>
-
-                <div className="flex flex-col items-center rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800" title="Average time requests are open. Closed/Cancelled/On Hold requests use their close time; open requests use today.">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-50 text-xl ring-1 ring-slate-200 dark:bg-slate-700 dark:ring-slate-600">
-                    ⏱️
-                  </div>
-                  <p className="mt-2 text-center text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                    Avg Request Open Time
-                  </p>
-                  <p className="mt-1 text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
-                    {audit.requestsCount === 0 ? "—" : formatDuration(audit.avgOpenMs)}
-                  </p>
-                </div>
-
-                <div className="flex flex-col items-center rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-50 text-xl ring-1 ring-slate-200 dark:bg-slate-700 dark:ring-slate-600">
-                    📁
-                  </div>
-                  <p className="mt-2 text-center text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                    Files
-                  </p>
-                  <p className="mt-1 text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
-                    {totalFiles}
-                  </p>
-                </div>
+          {/* ── Row 1: Stats ── */}
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <Link
+              href={`${baseRoute}/requests`}
+              className="group flex flex-col items-center rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:shadow-md hover:ring-2 hover:ring-amber-200 dark:border-slate-700 dark:bg-slate-800 dark:hover:ring-amber-500/40"
+            >
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-50 text-xl ring-1 ring-slate-200 dark:bg-slate-700 dark:ring-slate-600">
+                📝
               </div>
+              <p className="mt-2 text-center text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                Total Requests
+              </p>
+              <p className="mt-1 text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
+                {audit.requestsCount}
+              </p>
+            </Link>
 
-              {/* Progress + Status side by side */}
-              <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-                <AuditProgress
-                  startDate={audit.startDate}
-                  endDate={audit.endDate}
-                  status={audit.status}
-                />
-                <StatusBreakdown buckets={audit.statusBreakdown} />
+            <div className="flex flex-col items-center rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-50 text-xl ring-1 ring-slate-200 dark:bg-slate-700 dark:ring-slate-600">
+                👤
               </div>
-
-              {/* Audit Files */}
-              <div>
-                <h2 className="mb-3 text-base font-semibold text-slate-900 dark:text-white">
-                  Audit Files
-                </h2>
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                  <FileSlot
-                    slot="agenda"
-                    auditId={audit.id}
-                    files={agendaFiles}
-                    isAdmin={isAdmin}
-                    onUpdated={handleUpdated}
-                    onPreview={setPreviewFile}
-                    defaultFolders={[
-                      ["Audit Agenda"],
-                      ["Audit Follow-Up and Report"],
-                    ]}
-                  />
-                  <FileSlot
-                    slot="readyBox"
-                    auditId={audit.id}
-                    files={readyBoxFiles}
-                    isAdmin={isAdmin}
-                    onUpdated={handleUpdated}
-                    onPreview={setPreviewFile}
-                  />
-                </div>
-              </div>
+              <p className="mt-2 text-center text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                My Requests
+              </p>
+              <p className="mt-1 text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
+                {audit.myAssignedCount}
+              </p>
             </div>
 
-            {/* ─── Right: activity sidebar (1/3) ─── */}
-            <aside className="lg:col-span-1">
-              <div className="lg:sticky lg:top-6">
-                <ActivityFeed items={audit.activity} />
+            <div className="flex flex-col items-center rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800" title="Average time requests are open. Closed/Cancelled/On Hold requests use their close time; open requests use today.">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-50 text-xl ring-1 ring-slate-200 dark:bg-slate-700 dark:ring-slate-600">
+                ⏱️
               </div>
-            </aside>
+              <p className="mt-2 text-center text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                Avg Open Time
+              </p>
+              <p className="mt-1 text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
+                {audit.requestsCount === 0 ? "—" : formatDuration(audit.avgOpenMs)}
+              </p>
+            </div>
+
+            <div className="flex flex-col items-center rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-50 text-xl ring-1 ring-slate-200 dark:bg-slate-700 dark:ring-slate-600">
+                📁
+              </div>
+              <p className="mt-2 text-center text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                Files
+              </p>
+              <p className="mt-1 text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
+                {totalFiles}
+              </p>
+            </div>
           </div>
+
+          {/* ── Row 2: Progress + Status (1/3) | Activity feed (2/3) ── */}
+          <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
+            <div className="flex flex-col gap-6">
+              <AuditProgress
+                startDate={audit.startDate}
+                endDate={audit.endDate}
+                status={audit.status}
+              />
+              <StatusBreakdown buckets={audit.statusBreakdown} />
+            </div>
+            <div className="lg:col-span-2">
+              <ActivityFeed items={audit.activity} />
+            </div>
+          </div>
+
+          {/* ── Row 3: Audit Files — full width ── */}
+          <div className="mt-6">
+            <h2 className="mb-3 text-base font-semibold text-slate-900 dark:text-white">
+              Audit Files
+            </h2>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+              <FileSlot
+                slot="agenda"
+                auditId={audit.id}
+                files={agendaFiles}
+                isAdmin={isAdmin}
+                onUpdated={handleUpdated}
+                onPreview={setPreviewFile}
+                defaultFolders={[
+                  ["Audit Agenda"],
+                  ["Audit Follow-Up and Report"],
+                ]}
+              />
+              <FileSlot
+                slot="readyBox"
+                auditId={audit.id}
+                files={readyBoxFiles}
+                isAdmin={isAdmin}
+                onUpdated={handleUpdated}
+                onPreview={setPreviewFile}
+              />
+              <FileSlot
+                slot="auditors"
+                auditId={audit.id}
+                files={auditorFiles}
+                isAdmin={isAdmin}
+                onUpdated={handleUpdated}
+                onPreview={setPreviewFile}
+                headerAction={
+                  isAdmin ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowShareAuditorsModal(true)}
+                      className="inline-flex items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50 px-2 py-1 text-xs font-semibold text-indigo-700 transition hover:bg-indigo-100 dark:border-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300 dark:hover:bg-indigo-800"
+                      title="Share Auditors folder"
+                    >
+                      🔗 Share
+                    </button>
+                  ) : null
+                }
+              />
+            </div>
+          </div>
+
+          {showShareAuditorsModal && (
+            <ShareAuditorsModal
+              auditId={audit.id}
+              onClose={() => setShowShareAuditorsModal(false)}
+            />
+          )}
         </div>
       </div>
     </>

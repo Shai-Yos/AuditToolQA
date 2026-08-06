@@ -454,3 +454,193 @@ export function isOneDriveUrl(url: string): boolean {
 export function extractDrivePath(url: string): string {
   return url.replace(/^onedrive:/, "");
 }
+
+// ─── Sharing ───────────────────────────────────────────────────────────────────
+
+export interface ShareResult {
+  succeeded: string[];
+  failed: string[];
+  notConfigured?: boolean;
+  error?: string;
+  warning?: string;
+  requestedPermission?: SharePermissionLevel;
+  appliedPermission?: "view" | "edit";
+}
+
+export type SharePermissionLevel = "view" | "edit";
+
+type GraphUserIdentity = {
+  email?: string;
+  userPrincipalName?: string;
+};
+
+type GraphPermission = {
+  id?: string;
+  invitation?: { email?: string };
+  grantedToV2?: { user?: GraphUserIdentity };
+  grantedToIdentitiesV2?: Array<{ user?: GraphUserIdentity }>;
+};
+
+function normaliseEmail(v: string): string {
+  return v.trim().toLowerCase();
+}
+
+function permissionTargetsEmail(permission: GraphPermission, targetEmail: string): boolean {
+  const target = normaliseEmail(targetEmail);
+  const candidates: string[] = [];
+
+  if (permission.invitation?.email) candidates.push(permission.invitation.email);
+  if (permission.grantedToV2?.user?.email) candidates.push(permission.grantedToV2.user.email);
+  if (permission.grantedToV2?.user?.userPrincipalName) {
+    candidates.push(permission.grantedToV2.user.userPrincipalName);
+  }
+  for (const identity of permission.grantedToIdentitiesV2 ?? []) {
+    if (identity.user?.email) candidates.push(identity.user.email);
+    if (identity.user?.userPrincipalName) candidates.push(identity.user.userPrincipalName);
+  }
+
+  return candidates.some((c) => normaliseEmail(c) === target);
+}
+
+async function resolveDriveItemId(token: string, drivePath: string): Promise<string | null> {
+  const url = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(ONEDRIVE_USER)}/drive/root:${encodeURIComponent(drivePath).replace(/%2F/g, "/")}`;
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    console.error(`[OneDrive] Failed to resolve drive item for share path ${drivePath}: ${res.status} ${text}`);
+    return null;
+  }
+  const data = (await res.json()) as { id?: string };
+  return data.id ?? null;
+}
+
+async function removeDirectPermissionsForEmails(token: string, drivePath: string, emails: string[]): Promise<void> {
+  const itemId = await resolveDriveItemId(token, drivePath);
+  if (!itemId) return;
+
+  const listUrl = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(ONEDRIVE_USER)}/drive/items/${encodeURIComponent(itemId)}/permissions`;
+  const listRes = await fetch(listUrl, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!listRes.ok) {
+    const text = await listRes.text().catch(() => "");
+    console.error(`[OneDrive] Failed to list permissions for ${drivePath}: ${listRes.status} ${text}`);
+    return;
+  }
+
+  const payload = (await listRes.json()) as { value?: GraphPermission[] };
+  const permissions = payload.value ?? [];
+
+  for (const permission of permissions) {
+    if (!permission.id) continue;
+    const isTarget = emails.some((email) => permissionTargetsEmail(permission, email));
+    if (!isTarget) continue;
+
+    const deleteUrl = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(ONEDRIVE_USER)}/drive/items/${encodeURIComponent(itemId)}/permissions/${encodeURIComponent(permission.id)}`;
+    const deleteRes = await fetch(deleteUrl, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    // Some entries can be inherited/non-removable; log and continue.
+    if (!deleteRes.ok && deleteRes.status !== 404) {
+      const text = await deleteRes.text().catch(() => "");
+      console.error(`[OneDrive] Failed to delete permission ${permission.id}: ${deleteRes.status} ${text}`);
+    }
+  }
+}
+
+/**
+ * Share an OneDrive folder with a list of email addresses by sending them an
+ * invite via Microsoft Graph. Each recipient gets view access (read-only) and
+ * receives an email notification.
+ *
+ * @param drivePath - Absolute drive path, e.g. "/AuditTool/Audits/My Audit/Auditors"
+ * @param emails    - List of email addresses to invite
+ * @param message   - Optional message included in the invite email
+ */
+export async function shareOneDriveFolder(
+  drivePath: string,
+  emails: string[],
+  message?: string,
+  permissionLevel: SharePermissionLevel = "view",
+): Promise<ShareResult> {
+  if (!isOneDriveConfigured()) {
+    return {
+      succeeded: [],
+      failed: emails,
+      notConfigured: true,
+      error: "OneDrive credentials are not configured",
+      requestedPermission: permissionLevel,
+      appliedPermission: permissionLevel === "edit" ? "edit" : "view",
+    };
+  }
+
+  let token: string;
+  try {
+    token = await getOneDriveToken();
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Failed to acquire OneDrive token";
+    console.error("[OneDrive] Failed to acquire token for sharing:", err);
+    return {
+      succeeded: [],
+      failed: emails,
+      error: msg,
+      requestedPermission: permissionLevel,
+      appliedPermission: permissionLevel === "edit" ? "edit" : "view",
+    };
+  }
+  const url = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(ONEDRIVE_USER)}/drive/root:${encodeURIComponent(drivePath).replace(/%2F/g, "/")}:/invite`;
+  const graphRoles = permissionLevel === "edit" ? ["write"] : ["read"];
+
+  // Replace-permission semantics: remove direct permissions for these emails
+  // before adding the requested role, so edit -> view actually downgrades.
+  try {
+    await removeDirectPermissionsForEmails(token, drivePath, emails);
+  } catch (err) {
+    console.error("[OneDrive] Failed during pre-share permission cleanup:", err);
+  }
+
+  const succeeded: string[] = [];
+  const failed: string[] = [];
+
+  for (const email of emails) {
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          requireSignIn: true,
+          sendInvitation: true,
+          roles: graphRoles,
+          recipients: [{ email }],
+          message: message ?? "You have been granted access to the Auditors folder.",
+        }),
+      });
+
+      if (res.ok) {
+        succeeded.push(email);
+      } else {
+        const text = await res.text();
+        console.error(`[OneDrive] Share invite failed for ${email}: ${res.status} ${text}`);
+        failed.push(email);
+      }
+    } catch (err) {
+      console.error(`[OneDrive] Share invite error for ${email}:`, err);
+      failed.push(email);
+    }
+  }
+
+  return {
+    succeeded,
+    failed,
+    requestedPermission: permissionLevel,
+    appliedPermission: permissionLevel === "edit" ? "edit" : "view",
+  };
+}
