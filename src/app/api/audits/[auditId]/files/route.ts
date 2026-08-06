@@ -10,7 +10,7 @@ import {
   deleteLocalFolder,
 } from "@/server/lib/oneDriveClient";
 
-const ALLOWED_SLOTS = ["agenda", "readyBox"] as const;
+const ALLOWED_SLOTS = ["agenda", "readyBox", "auditors"] as const;
 type Slot = (typeof ALLOWED_SLOTS)[number];
 
 const slugify = (s: string, fallback: string) =>
@@ -20,7 +20,7 @@ const slugify = (s: string, fallback: string) =>
     .substring(0, 100) || fallback;
 
 const slotFolderName = (slot: Slot) =>
-  slot === "agenda" ? "General" : "Ready Box";
+  slot === "agenda" ? "General" : slot === "readyBox" ? "Ready Box" : "Auditors";
 
 /** Normalise a user-supplied path into safe slash-joined segments. */
 function normalisePath(raw: string | null | undefined): string[] {

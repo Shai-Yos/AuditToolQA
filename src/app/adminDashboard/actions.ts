@@ -204,6 +204,7 @@ export async function createAudit(
           ["Audits", safeTitle],
           ["Audits", safeTitle, "Requests"],
           ["Audits", safeTitle, "Chat"],
+          ["Audits", safeTitle, "Auditors"],
         ];
         for (const segments of foldersToCreate) {
           const { createFolder } = await import("@/server/lib/oneDriveClient");
