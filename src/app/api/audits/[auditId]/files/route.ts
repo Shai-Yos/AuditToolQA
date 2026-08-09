@@ -109,12 +109,12 @@ export async function POST(
 
   const audit = await db.audit.findUnique({
     where: { id: auditId },
-    select: { title: true },
+    select: { title: true, trackId: true },
   });
   if (!audit) return NextResponse.json({ error: "Audit not found" }, { status: 404 });
 
-  const auditSlug = slugify(audit.title, auditId); // kept for local fallback paths
-  const auditFolderName = audit.title; // exact name as it exists on OneDrive
+  const auditFolderName = audit.trackId ? `${audit.trackId} ${audit.title}` : audit.title; // exact name as it exists on OneDrive
+  const auditSlug = slugify(auditFolderName, auditId); // kept for local fallback paths
   const slotFolder = slotFolderName(slot as Slot);
 
   // ── Folder creation ──────────────────────────────────────────────────────
@@ -287,7 +287,7 @@ export async function DELETE(
 
     const audit = await db.audit.findUnique({
       where: { id: auditId },
-      select: { title: true },
+      select: { title: true, trackId: true },
     });
 
     // Delete every child row (files + nested folders) under this path
@@ -305,7 +305,8 @@ export async function DELETE(
     await deleteOneDriveFile(drivePath); // OneDrive DELETE works recursively
 
     if (audit) {
-      const auditSlug = slugify(audit.title, auditId);
+      const auditFolderName2 = audit.trackId ? `${audit.trackId} ${audit.title}` : audit.title;
+      const auditSlug = slugify(auditFolderName2, auditId);
       const slotFolder = slotFolderName(slot);
       const localFolder = join(
         process.cwd(),

@@ -198,13 +198,15 @@ export async function createAudit(
     // Auto-create audit folder structure under AuditTool/Audits/ (physical folders only, no DB entries)
     void (async () => {
       try {
-        const safeTitle = title.replace(/[^a-zA-Z0-9._\- ]/g, "_");
+        const auditFolderName = `${trackId} ${title}`.replace(/[^a-zA-Z0-9._\- ]/g, "_");
         const foldersToCreate = [
           ["Audits"],
-          ["Audits", safeTitle],
-          ["Audits", safeTitle, "Requests"],
-          ["Audits", safeTitle, "Chat"],
-          ["Audits", safeTitle, "Auditors"],
+          ["Audits", auditFolderName],
+          ["Audits", auditFolderName, "General"],
+          ["Audits", auditFolderName, "Ready Box"],
+          ["Audits", auditFolderName, "Auditors"],
+          ["Audits", auditFolderName, "Requests"],
+          ["Audits", auditFolderName, "Chat"],
         ];
         for (const segments of foldersToCreate) {
           const { createFolder } = await import("@/server/lib/oneDriveClient");

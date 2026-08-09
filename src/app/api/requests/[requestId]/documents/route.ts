@@ -42,9 +42,9 @@ export async function POST(
     if (auditId) {
       const audit = await db.audit.findUnique({
         where: { id: auditId },
-        select: { title: true },
+        select: { title: true, trackId: true },
       });
-      auditTitle = audit?.title ?? auditId;
+      auditTitle = audit?.trackId ? `${audit.trackId} ${audit.title}` : (audit?.title ?? auditId);
       auditSlug = slugify(auditTitle, auditId);
     }
 

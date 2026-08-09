@@ -57,6 +57,7 @@ export function invalidateUserCache(userId: string): void {
 export type CachedAuditPrivilege = {
   assignee: { role: string } | null;
   auditTitle: string;
+  auditTrackId: string | null;
   roomRolesJson: string | null;
   createdById: string | null;
 };
@@ -82,13 +83,14 @@ export async function getCachedAuditPrivilege(
     }),
     db.audit.findUnique({
       where: { id: auditId },
-      select: { title: true, roomRolesJson: true, createdById: true },
+      select: { title: true, trackId: true, roomRolesJson: true, createdById: true },
     }),
   ]);
 
   const cached: CachedAuditPrivilege = {
     assignee,
     auditTitle: audit?.title ?? "",
+    auditTrackId: audit?.trackId ?? null,
     roomRolesJson: (audit?.roomRolesJson as string) ?? null,
     createdById: audit?.createdById ?? null,
   };

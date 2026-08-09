@@ -58,7 +58,7 @@ export async function GET(
 
   const audit = await db.audit.findUnique({
     where: { id: auditId },
-    select: { title: true },
+    select: { title: true, trackId: true },
   });
   if (!audit) return NextResponse.json({ error: "Audit not found" }, { status: 404 });
 
@@ -84,7 +84,7 @@ export async function GET(
     );
   }
 
-  const auditSlug = slugify(audit.title, auditId);
+  const auditSlug = slugify(audit.trackId ? `${audit.trackId} ${audit.title}` : audit.title, auditId);
   const slotFolder = slotFolderName(slot as Slot);
 
   const zip = new JSZip();

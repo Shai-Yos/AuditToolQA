@@ -95,7 +95,8 @@ export async function POST(
 
   // Save file — OneDrive: /AuditTool/Audits/[Audit name]/Chat/[file]
   // Local fallback: public/uploads/[auditSlug]/chats/[channelSlug]/[file]
-  const auditTitle = privilege.auditTitle || auditId;
+  const baseTitle = privilege.auditTitle || auditId;
+  const auditTitle = privilege.auditTrackId ? `${privilege.auditTrackId} ${baseTitle}` : baseTitle;
   const auditSlug = auditTitle.trim().replace(/[\/\\:*?"<>|]/g, "_").substring(0, 100) || auditId;
   const channelSlug = channel.replace(/[\/\\:*?"<>|]/g, "_");
   const localDir = join(process.cwd(), "public", "uploads", auditSlug, "chats", channelSlug);
