@@ -321,12 +321,22 @@ export async function createAudit(
   }
 }
 
-export async function deleteAudit(auditId: string): Promise<{ ok: boolean; error?: string }> {
+export async function cancelAudit(auditId: string): Promise<{ ok: boolean; error?: string }> {
   try {
+    const admin = await requireAdmin();
+
     const audit = await db.audit.findUnique({
       where: { id: auditId },
       select: { title: true, status: true },
     });
+
+    if (!audit) {
+      return { ok: false, error: "Audit not found." };
+    }
+
+    if (audit.status === "ARCHIVED") {
+      return { ok: true };
+    }
 
     // Read outlookEventId via raw SQL (Prisma client may not have this field typed yet)
     const rows = await db.$queryRawUnsafe<Array<{ outlookEventId: string | null }>>(
@@ -335,27 +345,30 @@ export async function deleteAudit(auditId: string): Promise<{ ok: boolean; error
     );
     const outlookEventId = rows[0]?.outlookEventId ?? null;
 
-    // Delete associated calendar event if one exists
+    // Remove associated calendar event if one exists
     if (outlookEventId) {
       void deleteCalendarEvent(outlookEventId);
     }
 
-    await db.audit.delete({
+    await db.audit.update({
       where: { id: auditId },
+      data: {
+        status: "ARCHIVED",
+      },
     });
-    const admin = await requireAdmin();
+
     await logActivity({
-      type: "AUDIT_DELETED",
+      type: "AUDIT_ARCHIVED",
       actorName: admin.name ?? admin.email ?? "Admin",
       targetId: auditId,
-      targetTitle: audit?.title ?? auditId,
-      meta: { status: audit?.status ?? "" },
+      targetTitle: audit.title ?? auditId,
+      meta: { previousStatus: audit.status ?? "" },
     });
 
     emitGlobalEvent("audits");
     return { ok: true };
   } catch (error) {
-    console.error("Error deleting audit:", error);
-    return { ok: false, error: "Failed to delete audit. Please try again." };
+    console.error("Error cancelling audit:", error);
+    return { ok: false, error: "Failed to cancel audit. Please try again." };
   }
 }

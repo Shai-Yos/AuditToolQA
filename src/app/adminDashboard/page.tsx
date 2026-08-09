@@ -40,7 +40,14 @@ export default async function AdminDashboardPage() {
     const roomsCount = Math.max(a.frontRoomsCount, a.backRoomsCount);
 
     // Determine actual status directly from DB (auto-complete already ran)
-    const status: "Draft" | "Active" | "Completed" = a.status === "DRAFT" ? "Draft" : a.status === "COMPLETED" ? "Completed" : "Active";
+    const status: "Draft" | "Active" | "Completed" | "Archived" =
+      a.status === "DRAFT"
+        ? "Draft"
+        : a.status === "COMPLETED"
+          ? "Completed"
+          : a.status === "ARCHIVED"
+            ? "Archived"
+            : "Active";
 
     return {
       id: a.id,
@@ -63,9 +70,9 @@ export default async function AdminDashboardPage() {
     };
   });
 
-  // Sort audits: Active first, then Draft, then Completed
+  // Sort audits: Active first, then Draft, then Completed, then Archived
   const sortedAudits = mappedAudits.sort((a, b) => {
-    const statusPriority = { Active: 0, Draft: 1, Completed: 2 };
+    const statusPriority = { Active: 0, Draft: 1, Completed: 2, Archived: 3 };
     return statusPriority[a.status] - statusPriority[b.status];
   });
 

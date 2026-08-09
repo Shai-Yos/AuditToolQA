@@ -36,10 +36,19 @@ export default async function AllAuditsOwnerPage() {
     id: a.id,
     trackId: a.trackId ?? undefined,
     title: a.title,
-    status: (a.status === "DRAFT" ? "Draft" : a.status === "COMPLETED" ? "Completed" : "Active") as
+    status: (
+      a.status === "DRAFT"
+        ? "Draft"
+        : a.status === "COMPLETED"
+          ? "Completed"
+          : a.status === "ARCHIVED"
+            ? "Archived"
+            : "Active"
+    ) as
       | "Draft"
       | "Active"
-      | "Completed",
+      | "Completed"
+      | "Archived",
     startDate: a.startAt?.toISOString() ?? a.createdAt.toISOString(),
     endDate: a.endAt?.toISOString() ?? null,
     roomsCount: Math.max(a.frontRoomsCount, a.backRoomsCount),
@@ -54,8 +63,8 @@ export default async function AllAuditsOwnerPage() {
     })),
   }));
 
-  // Sort: Active → Draft → Completed
-  const priority = { Active: 0, Draft: 1, Completed: 2 } as const;
+  // Sort: Active → Draft → Completed → Archived
+  const priority = { Active: 0, Draft: 1, Completed: 2, Archived: 3 } as const;
   mapped.sort((a, b) => priority[a.status] - priority[b.status]);
 
   return <AllAuditsOwnerClient audits={mapped} />;

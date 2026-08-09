@@ -4,14 +4,14 @@ import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuditNav } from "@/components/audit-nav-context";
-import { deleteAudit } from "./actions";
+import { cancelAudit } from "./actions";
 import { AuditCard as SharedAuditCard } from "@/components/audit-card";
 
 type AuditCard = {
   id: string;
   trackId?: string;
   title: string;
-  status: "Draft" | "Active" | "Completed";
+  status: "Draft" | "Active" | "Completed" | "Archived";
   startDate: string;
   endDate?: string | null;
   timezone?: string;
@@ -201,12 +201,12 @@ export default function AuditOwnerDashboardClient({
               viewMode={viewMode}
               canExport
               canEdit={a.isOwned}
-              canDelete={a.isOwned}
+              canCancel={a.isOwned}
               onOpen={() => {
                 setActiveAudit({ id: a.id, title: a.title, tab: "home" });
                 router.push(`/auditOwnerDashboard/audits/${a.id}`);
               }}
-              onDelete={() => deleteAudit(a.id)}
+              onCancel={() => cancelAudit(a.id)}
             />
           ))}
 

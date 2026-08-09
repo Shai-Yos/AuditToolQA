@@ -4,8 +4,9 @@ import { db } from "@/server/db";
 import { requireAuditOwner } from "@/server/helpers/currentUser";
 import { logActivity } from "@/server/helpers/logActivity";
 import { deleteCalendarEvent } from "@/server/lib/outlookCalendar";
+import { emitGlobalEvent } from "@/server/lib/event-bus";
 
-export async function deleteAudit(auditId: string): Promise<{ ok: boolean; error?: string }> {
+export async function cancelAudit(auditId: string): Promise<{ ok: boolean; error?: string }> {
   try {
     const user = await requireAuditOwner();
 
@@ -19,7 +20,11 @@ export async function deleteAudit(auditId: string): Promise<{ ok: boolean; error
     }
 
     if (audit.createdById !== user.id) {
-      return { ok: false, error: "You can only delete audits you created." };
+      return { ok: false, error: "You can only cancel audits you created." };
+    }
+
+    if (audit.status === "ARCHIVED") {
+      return { ok: true };
     }
 
     const rows = await db.$queryRawUnsafe<Array<{ outlookEventId: string | null }>>(
@@ -32,19 +37,26 @@ export async function deleteAudit(auditId: string): Promise<{ ok: boolean; error
       void deleteCalendarEvent(outlookEventId);
     }
 
-    await db.audit.delete({ where: { id: auditId } });
+    await db.audit.update({
+      where: { id: auditId },
+      data: {
+        status: "ARCHIVED",
+      },
+    });
 
     await logActivity({
-      type: "AUDIT_DELETED",
+      type: "AUDIT_ARCHIVED",
       actorName: user.name ?? user.email ?? "Audit Owner",
       targetId: auditId,
       targetTitle: audit.title ?? auditId,
-      meta: { status: audit.status ?? "" },
+      meta: { previousStatus: audit.status ?? "" },
     });
+
+    emitGlobalEvent("audits");
 
     return { ok: true };
   } catch (error) {
-    console.error("Error deleting audit:", error);
-    return { ok: false, error: "Failed to delete audit. Please try again." };
+    console.error("Error cancelling audit:", error);
+    return { ok: false, error: "Failed to cancel audit. Please try again." };
   }
 }
