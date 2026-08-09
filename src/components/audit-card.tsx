@@ -18,7 +18,7 @@ export type AuditCardData = {
   /**
    * If omitted, the card displays a static "ACTIVE" badge (user dashboard).
    */
-  status?: "Draft" | "Active" | "Completed";
+  status?: "Draft" | "Active" | "Completed" | "Archived";
   startDate: string;
   endDate?: string | null;
   roomsCount: number;
@@ -42,7 +42,7 @@ export type AuditCardProps = {
    */
   canExport?: boolean;
   canEdit?: boolean;
-  canDelete?: boolean;
+  canCancel?: boolean;
   /**
    * Optional override for the "open" navigation action.
    * Useful when the caller needs to set context (e.g. useAuditNav) before navigating.
@@ -50,10 +50,10 @@ export type AuditCardProps = {
    */
   onOpen?: () => void;
   /**
-   * Called when the user confirms deletion.
+   * Called when the user confirms cancelling (archiving).
    * The component handles optimistic UI; the caller supplies the server action.
    */
-  onDelete?: () => Promise<{ ok: boolean; error?: string }>;
+  onCancel?: () => Promise<{ ok: boolean; error?: string }>;
 };
 
 // ---------------------------------------------------------------------------
@@ -153,12 +153,12 @@ export function AuditCard({
   viewMode,
   canExport = false,
   canEdit = false,
-  canDelete = false,
+  canCancel = false,
   onOpen,
-  onDelete,
+  onCancel,
 }: AuditCardProps) {
   const router = useRouter();
-  const [isDeleting, setIsDeleting] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
   const [lockError, setLockError] = useState<{ lockedByName: string } | null>(null);
@@ -191,23 +191,23 @@ export function AuditCard({
     router.push(`${dashboardBase}/editAudit/${audit.id}`);
   };
 
-  // ── Delete ───────────────────────────────────────────────────────────────
-  const handleDelete = async (e?: React.MouseEvent) => {
+  // ── Cancel / Archive ─────────────────────────────────────────────────────
+  const handleCancel = async (e?: React.MouseEvent) => {
     e?.stopPropagation();
     if (
       !confirm(
-        `Are you sure you want to delete "${audit.title}"? This action cannot be undone.`,
+        `Are you sure you want to cancel "${audit.title}"? It will be archived.`,
       )
     )
       return;
-    if (!onDelete) return;
-    setIsDeleting(true);
-    const result = await onDelete();
+    if (!onCancel) return;
+    setIsCancelling(true);
+    const result = await onCancel();
     if (result.ok) {
       router.refresh();
     } else {
-      alert(result.error ?? "Failed to delete audit");
-      setIsDeleting(false);
+      alert(result.error ?? "Failed to cancel audit");
+      setIsCancelling(false);
     }
   };
 
@@ -282,6 +282,8 @@ export function AuditCard({
             ? "bg-green-50 text-green-700 ring-green-200"
             : s === "Completed"
             ? "bg-blue-50 text-blue-700 ring-blue-200"
+            : s === "Archived"
+            ? "bg-slate-100 text-slate-700 ring-slate-200"
             : "bg-slate-100 text-slate-700 ring-slate-200"
         }`}
       >
@@ -443,14 +445,14 @@ export function AuditCard({
                     ✏️ Edit
                   </button>
                 )}
-                {canDelete && (
+                {canCancel && (
                   <button
-                    onClick={(e) => void handleDelete(e)}
-                    disabled={isDeleting}
+                    onClick={(e) => void handleCancel(e)}
+                    disabled={isCancelling}
                     className="inline-flex h-10 items-center justify-center gap-1.5 rounded-xl border border-red-200 bg-red-50 px-4 text-sm font-semibold text-red-700 shadow-sm transition hover:border-red-300 hover:bg-red-100 disabled:opacity-50"
-                    title="Delete Audit"
+                    title="Cancel Audit"
                   >
-                    🗑️ {isDeleting ? "Deleting..." : "Delete"}
+                    📦 {isCancelling ? "Cancelling..." : "Cancel"}
                   </button>
                 )}
               </div>
@@ -587,7 +589,7 @@ export function AuditCard({
             className="mt-6 flex flex-col gap-2"
             onClick={(e) => e.stopPropagation()}
           >
-            {(canExport || canEdit || canDelete) && (
+            {(canExport || canEdit || canCancel) && (
               <div className="flex flex-wrap justify-center gap-2">
                 {canExport && (
                   <button
@@ -611,14 +613,14 @@ export function AuditCard({
                     ✏️ Edit
                   </button>
                 )}
-                {canDelete && (
+                {canCancel && (
                   <button
-                    onClick={(e) => void handleDelete(e)}
-                    disabled={isDeleting}
+                    onClick={(e) => void handleCancel(e)}
+                    disabled={isCancelling}
                     className="flex items-center justify-center rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 shadow-sm transition hover:border-red-300 hover:bg-red-100 hover:text-red-800 active:scale-[0.99] disabled:opacity-50"
-                    title="Delete Audit"
+                    title="Cancel Audit"
                   >
-                    {isDeleting ? "Deleting..." : "🗑️ Delete"}
+                    {isCancelling ? "Cancelling..." : "📦 Cancel"}
                   </button>
                 )}
               </div>

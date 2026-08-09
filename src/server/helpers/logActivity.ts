@@ -4,7 +4,7 @@ import { createNotifications, type NotificationType } from "./notifications";
 export type ActivityType =
   | "AUDIT_CREATED"
   | "AUDIT_UPDATED"
-  | "AUDIT_DELETED"
+  | "AUDIT_ARCHIVED"
   | "REQUEST_CREATED"
   | "REQUEST_UPDATED"
   | "REQUEST_MOVED"

@@ -3,7 +3,7 @@
 import { useMemo, useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { deleteAudit } from "./actions";
+import { cancelAudit } from "./actions";
 import { AuditCard as SharedAuditCard } from "@/components/audit-card";
 
 type DashboardUser = {
@@ -16,7 +16,7 @@ type AuditCardVM = {
   id: string;
   trackId?: string;
   title: string;
-  status: "Draft" | "Active" | "Completed";
+  status: "Draft" | "Active" | "Completed" | "Archived";
   startDate: string;
   endDate?: string | null;
   timezone?: string;
@@ -273,8 +273,8 @@ export default function AdminDashboardClient({
                   viewMode={viewMode}
                   canExport
                   canEdit={user.role === "ADMIN"}
-                  canDelete
-                  onDelete={() => deleteAudit(a.id)}
+                  canCancel
+                  onCancel={() => cancelAudit(a.id)}
                 />
               ))}
 
@@ -501,10 +501,10 @@ const ACTIVITY_META: Record<
     },
   },
 
-  AUDIT_DELETED: {
-    icon: "🗑️",
-    color: "bg-red-50 text-red-700 ring-red-200",
-    label: (t) => `Audit deleted: ${t}`,
+  AUDIT_ARCHIVED: {
+    icon: "📦",
+    color: "bg-slate-100 text-slate-700 ring-slate-200",
+    label: (t) => `Audit archived: ${t}`,
   },
 
   REQUEST_CREATED: {

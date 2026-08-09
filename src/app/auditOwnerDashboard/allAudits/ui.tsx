@@ -3,14 +3,14 @@
 import { useMemo, useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { deleteAudit } from "../actions";
+import { cancelAudit } from "../actions";
 import { AuditCard as SharedAuditCard } from "@/components/audit-card";
 
 type AuditCardVM = {
   id: string;
   trackId?: string;
   title: string;
-  status: "Draft" | "Active" | "Completed";
+  status: "Draft" | "Active" | "Completed" | "Archived";
   startDate: string;
   endDate?: string | null;
   roomsCount: number;
@@ -182,8 +182,8 @@ export default function AllAuditsOwnerClient({ audits }: { audits: AuditCardVM[]
                 viewMode={viewMode}
                 canExport
                 canEdit={a.isOwned}
-                canDelete={a.isOwned}
-                onDelete={() => deleteAudit(a.id)}
+                canCancel={a.isOwned && a.status !== "Archived"}
+                onCancel={() => cancelAudit(a.id)}
               />
             ))}
 
@@ -226,7 +226,7 @@ function StatusFilterDropdown({ selected, onChange }: { selected: string[]; onCh
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  const statuses = ["Active", "Draft", "Completed"] as const;
+  const statuses = ["Active", "Draft", "Completed", "Archived"] as const;
   const toggle = (s: string) =>
     onChange(selected.includes(s) ? selected.filter((x) => x !== s) : [...selected, s]);
   const label =

@@ -37,7 +37,14 @@ export default async function AllAuditsPage() {
   const mappedAudits = audits.map((a) => {
     const roomsCount = Math.max(a.frontRoomsCount, a.backRoomsCount);
 
-    const status: "Draft" | "Active" | "Completed" = a.status === "DRAFT" ? "Draft" : a.status === "COMPLETED" ? "Completed" : "Active";
+    const status: "Draft" | "Active" | "Completed" | "Archived" =
+      a.status === "DRAFT"
+        ? "Draft"
+        : a.status === "COMPLETED"
+          ? "Completed"
+          : a.status === "ARCHIVED"
+            ? "Archived"
+            : "Active";
 
     return {
       id: a.id,
@@ -60,7 +67,7 @@ export default async function AllAuditsPage() {
   });
 
   const sortedAudits = mappedAudits.sort((a, b) => {
-    const priority = { Active: 0, Draft: 1, Completed: 2 };
+    const priority = { Active: 0, Draft: 1, Completed: 2, Archived: 3 };
     return priority[a.status] - priority[b.status];
   });
 

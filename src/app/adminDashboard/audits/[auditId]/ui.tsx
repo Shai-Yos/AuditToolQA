@@ -4,7 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { useAuditNav } from "@/components/audit-nav-context";
-import { deleteAudit } from "@/app/adminDashboard/actions";
+import { cancelAudit as cancelAuditAdmin } from "@/app/adminDashboard/actions";
+import { cancelAudit as cancelAuditOwner } from "@/app/auditOwnerDashboard/actions";
 import ExportModal, { type ExportType } from "./_components/ExportModal";
 
 type Slot = "agenda" | "readyBox" | "auditors";
@@ -93,6 +94,7 @@ function isPreviewable(name: string): "image" | "pdf" | null {
 const ACTIVITY_ICON: Record<string, { icon: string; color: string }> = {
   AUDIT_CREATED: { icon: "✨", color: "text-green-600" },
   AUDIT_UPDATED: { icon: "✏️", color: "text-blue-600" },
+  AUDIT_ARCHIVED: { icon: "📦", color: "text-slate-600" },
   REQUEST_CREATED: { icon: "📝", color: "text-blue-600" },
   REQUEST_UPDATED: { icon: "✏️", color: "text-blue-600" },
   REQUEST_MOVED: { icon: "➡️", color: "text-violet-600" },
@@ -109,6 +111,7 @@ function activityVerb(action: string): string {
   switch (action) {
     case "AUDIT_CREATED": return "created the audit";
     case "AUDIT_UPDATED": return "updated the audit";
+    case "AUDIT_ARCHIVED": return "archived the audit";
     case "REQUEST_CREATED": return "created request";
     case "REQUEST_UPDATED": return "updated request";
     case "REQUEST_MOVED": return "moved request";
@@ -1304,7 +1307,7 @@ export default function AuditDashboardUI({ audit, isAdmin = false, canCreateRequ
   const [readyBoxFiles, setReadyBoxFiles] = useState<AuditFileItem[]>(audit.readyBoxFiles);
   const [auditorFiles, setAuditorFiles] = useState<AuditFileItem[]>(audit.auditorFiles);
   const [showShareAuditorsModal, setShowShareAuditorsModal] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
   const [lockError, setLockError] = useState<{ lockedByName: string } | null>(null);
@@ -1316,15 +1319,21 @@ export default function AuditDashboardUI({ audit, isAdmin = false, canCreateRequ
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [audit.id, audit.title, isAdmin, canCreateRequest]);
 
-  const handleDelete = async () => {
-    if (!confirm(`Are you sure you want to delete "${audit.title}"? This action cannot be undone.`)) return;
-    setIsDeleting(true);
-    const result = await deleteAudit(audit.id);
+  const handleCancelAudit = async () => {
+    if (!confirm(`Are you sure you want to cancel "${audit.title}"? It will be archived.`)) return;
+    setIsCancelling(true);
+    const cancelAction = pathname.startsWith("/auditOwnerDashboard")
+      ? cancelAuditOwner
+      : cancelAuditAdmin;
+    const result = await cancelAction(audit.id);
     if (result.ok) {
-      router.push("/adminDashboard");
+      const returnPath = pathname.startsWith("/auditOwnerDashboard")
+        ? "/auditOwnerDashboard"
+        : "/adminDashboard";
+      router.push(returnPath);
     } else {
-      alert(result.error ?? "Failed to delete audit");
-      setIsDeleting(false);
+      alert(result.error ?? "Failed to cancel audit");
+      setIsCancelling(false);
     }
   };
 
@@ -1582,14 +1591,16 @@ export default function AuditDashboardUI({ audit, isAdmin = false, canCreateRequ
                   >
                     ✏️ Edit
                   </button>
-                  <button
-                    type="button"
-                    onClick={handleDelete}
-                    disabled={isDeleting}
-                    className="dark-red-btn inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-100 disabled:opacity-50 dark:border-red-700 dark:bg-red-900/40 dark:text-red-300 dark:hover:bg-red-800"
-                  >
-                    🗑️ {isDeleting ? "Deleting…" : "Delete"}
-                  </button>
+                  {audit.status !== "ARCHIVED" && (
+                    <button
+                      type="button"
+                      onClick={handleCancelAudit}
+                      disabled={isCancelling}
+                      className="dark-red-btn inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-100 disabled:opacity-50 dark:border-red-700 dark:bg-red-900/40 dark:text-red-300 dark:hover:bg-red-800"
+                    >
+                      📦 {isCancelling ? "Cancelling…" : "Cancel Audit"}
+                    </button>
+                  )}
                 </div>
               )}
             </div>

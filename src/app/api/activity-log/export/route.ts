@@ -6,7 +6,7 @@ import { NextResponse } from "next/server";
 const TYPE_LABELS: Record<string, string> = {
   AUDIT_CREATED: "Audit Created",
   AUDIT_UPDATED: "Audit Updated",
-  AUDIT_DELETED: "Audit Deleted",
+  AUDIT_ARCHIVED: "Audit Archived",
   REQUEST_CREATED: "Request Created",
   REQUEST_UPDATED: "Request Updated",
   REQUEST_MOVED: "Request Moved",
