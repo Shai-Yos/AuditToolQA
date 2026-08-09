@@ -1598,7 +1598,7 @@ export default function AuditDashboardUI({ audit, isAdmin = false, canCreateRequ
                       disabled={isCancelling}
                       className="dark-red-btn inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-100 disabled:opacity-50 dark:border-red-700 dark:bg-red-900/40 dark:text-red-300 dark:hover:bg-red-800"
                     >
-                      📦 {isCancelling ? "Cancelling…" : "Cancel Audit"}
+                      ❌ {isCancelling ? "Cancelling…" : "Cancel Audit"}
                     </button>
                   )}
                 </div>

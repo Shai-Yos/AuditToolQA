@@ -452,7 +452,7 @@ export function AuditCard({
                     className="inline-flex h-10 items-center justify-center gap-1.5 rounded-xl border border-red-200 bg-red-50 px-4 text-sm font-semibold text-red-700 shadow-sm transition hover:border-red-300 hover:bg-red-100 disabled:opacity-50"
                     title="Cancel Audit"
                   >
-                    📦 {isCancelling ? "Cancelling..." : "Cancel"}
+                    ❌ {isCancelling ? "Cancelling..." : "Cancel"}
                   </button>
                 )}
               </div>
@@ -620,7 +620,7 @@ export function AuditCard({
                     className="flex items-center justify-center rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 shadow-sm transition hover:border-red-300 hover:bg-red-100 hover:text-red-800 active:scale-[0.99] disabled:opacity-50"
                     title="Cancel Audit"
                   >
-                    {isCancelling ? "Cancelling..." : "📦 Cancel"}
+                    {isCancelling ? "Cancelling..." : "❌ Cancel"}
                   </button>
                 )}
               </div>
