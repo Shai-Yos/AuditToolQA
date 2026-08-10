@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { useAuditNav } from "@/components/audit-nav-context";
 import { NewRequestModal } from "@/components/new-request-modal";
+import { getSocket } from "@/lib/socketClient";
+import type { Socket } from "socket.io-client";
 
 const TranscriptionEditor = dynamic(
   () => import("@/components/transcription-editor").then((m) => m.TranscriptionEditor),
@@ -16,6 +18,9 @@ import { FrRequestsStrip } from "@/components/fr-requests-strip";
 
 // Single SSE connection shared across all ChatPanel instances on the same page
 const AuditStreamContext = createContext<string>("");
+// Single Socket.IO connection shared across all ChatPanel instances — used for
+// real-time chat message delivery and typing indicators (chat + transcription only)
+const AuditSocketContext = createContext<Socket | null>(null);
 
 type Message = {
   id: string;
@@ -115,6 +120,11 @@ export default function ChatsUI({
 }) {
   const router = useRouter();
   const { setActiveAudit } = useAuditNav();
+  // Created client-side only (useEffect never runs during SSR) — creating the
+  // socket eagerly in a useState initializer would run it on the server too,
+  // where browser-only transport APIs (WebSocket/XHR) aren't available.
+  const [socket, setSocket] = useState<Socket | null>(null);
+  useEffect(() => { setSocket(getSocket()); }, []);
   const [showNewRequestModal, setShowNewRequestModal] = useState(false);
 
   // Allow new request creation for FR Lead, FR QM, BR Lead, BR QM, or admins
@@ -227,6 +237,7 @@ export default function ChatsUI({
   }, [auditId]);
 
   return (
+    <AuditSocketContext.Provider value={socket}>
     <AuditStreamContext.Provider value={streamEvent}>
     <main className="min-h-screen bg-slate-50">
       <div className="pointer-events-none absolute inset-x-0 top-0 h-64 bg-gradient-to-b from-blue-50 via-cyan-50/30 to-transparent" />
@@ -425,6 +436,7 @@ export default function ChatsUI({
       )}
     </main>
     </AuditStreamContext.Provider>
+    </AuditSocketContext.Provider>
   );
 }
 
@@ -547,28 +559,18 @@ export function ChatPanel({
     ta.style.height = Math.min(ta.scrollHeight, 120) + "px";
   }, [text, rightPanel]);
 
-  // Typing indicator — report only (poll replaced by SSE-triggered fetch)
+  // Typing indicator — reported/received over Socket.IO (no DB/REST round-trip)
+  const socket = useContext(AuditSocketContext);
+  const isAtBottomRef = useRef(isAtBottom);
+  useEffect(() => { isAtBottomRef.current = isAtBottom; }, [isAtBottom]);
+  const typingTimersRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reportTyping = useCallback(() => {
     if (readOnly) return;
     if (typingTimeoutRef.current) return; // throttle: max once per 2s
-    fetch(`/api/audits/${auditId}/chat/typing`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ channel }),
-    }).catch(() => {});
+    socket?.emit("chat:typing", { auditId, channel });
     typingTimeoutRef.current = setTimeout(() => { typingTimeoutRef.current = null; }, 2000);
-  }, [auditId, channel, readOnly]);
-
-  const fetchTyping = useCallback(async () => {
-    if (readOnly && !rightPanel) return;
-    try {
-      const res = await fetch(`/api/audits/${auditId}/chat/typing?channel=${encodeURIComponent(channel)}`);
-      if (!res.ok) return;
-      const names = (await res.json()) as string[];
-      setTypingNames(names);
-    } catch { /* ignore */ }
-  }, [auditId, channel, readOnly, rightPanel]);
+  }, [socket, auditId, channel, readOnly]);
 
   // Keep a ref to the latest text so the interval always reads the current value
   const textRef = useRef(text);
@@ -587,6 +589,8 @@ export function ChatPanel({
       hasUserEditedRef.current = true;
       setSaveStatus("saving");
       let saveSucceeded = false;
+      const abort = new AbortController();
+      const timeoutId = setTimeout(() => abort.abort(new DOMException("Save timed out — will retry", "AbortError")), 10_000);
       try {
         if (!v.trim() || isEmptyHtml(v)) {
           for (const oldId of savedMsgIdsRef.current) {
@@ -607,6 +611,7 @@ export function ChatPanel({
               method: "PATCH",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ messageId: existingId, text: v }),
+              signal: abort.signal,
             });
             if (res.ok) {
               const data = (await res.json()) as { ok: boolean; message: Message };
@@ -621,6 +626,7 @@ export function ChatPanel({
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ channel, text: v }),
+              signal: abort.signal,
             });
             if (res.ok) {
               const data = (await res.json()) as { ok: boolean; message: Message };
@@ -638,7 +644,10 @@ export function ChatPanel({
         } else {
           setSaveStatus("idle");
         }
-      } catch { setSaveStatus("idle"); } finally { savingRef.current = false; }
+      } catch (err) {
+        if (!(err instanceof Error && err.name === "AbortError")) console.error("Transcription auto-save crashed:", err);
+        setSaveStatus("idle");
+      } finally { clearTimeout(timeoutId); savingRef.current = false; }
     };
     const id = setInterval(() => void save(), 1500);
     return () => clearInterval(id);
@@ -784,14 +793,82 @@ export function ChatPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auditId, channel, rightPanel, readOnly, fetchReadOnlyTranscription]);
 
-  // Receive SSE events forwarded from parent ChatsUI via context (single shared connection)
-  const streamEvent = useContext(AuditStreamContext);
+  // Real-time chat + typing via Socket.IO: join this channel's room and
+  // handle incoming messages/typing directly (no polling, no extra fetch).
   useEffect(() => {
-    if (!streamEvent || streamEvent === "connected") return;
-    if (streamEvent === "chat") void fetchIncremental();
-    if (streamEvent === "typing") void fetchTyping();
+    if (!socket) return;
+    const room = { auditId, channel };
+    socket.emit("chat:join", room);
+
+    const onMessage = ({ message: msg }: { message: Message }) => {
+      setMessages((prev) => {
+        const idx = prev.findIndex((m) => m.id === msg.id);
+        if (idx === -1) {
+          lastTimeRef.current = msg.time;
+          if (!isAtBottomRef.current) setUnreadCount((c) => c + 1);
+          const next = [...prev, { ...msg, _key: crypto.randomUUID(), isNew: true }];
+          setTimeout(() => {
+            setMessages((prev2) => prev2.map((m) => (m.id === msg.id ? { ...m, isNew: false } : m)));
+          }, 1200);
+          return next;
+        }
+        const next = [...prev];
+        next[idx] = { ...next[idx]!, text: msg.text, editedAt: msg.editedAt, authorName: msg.authorName };
+        return next;
+      });
+
+      if (rightPanel && (readOnly || (!savingRef.current && textRef.current === savedContentRef.current))) {
+        setText(msg.text);
+        savedContentRef.current = msg.text;
+        savedMsgIdsRef.current = [msg.id];
+      }
+    };
+
+    const onDeleted = ({ messageId }: { messageId: string }) => {
+      setMessages((prev) => prev.filter((m) => m.id !== messageId));
+      if (rightPanel && savedMsgIdsRef.current[0] === messageId) {
+        savedMsgIdsRef.current = [];
+        savedContentRef.current = "";
+        setText("");
+      }
+    };
+
+    const clearTypingTimer = (name: string) => {
+      const timers = typingTimersRef.current;
+      const existing = timers.get(name);
+      if (existing) { clearTimeout(existing); timers.delete(name); }
+    };
+
+    const onTyping = ({ name }: { name: string }) => {
+      setTypingNames((prev) => (prev.includes(name) ? prev : [...prev, name]));
+      clearTypingTimer(name);
+      typingTimersRef.current.set(name, setTimeout(() => {
+        setTypingNames((prev) => prev.filter((n) => n !== name));
+        typingTimersRef.current.delete(name);
+      }, 3000));
+    };
+
+    const onTypingStop = ({ name }: { name: string }) => {
+      setTypingNames((prev) => prev.filter((n) => n !== name));
+      clearTypingTimer(name);
+    };
+
+    socket.on("chat:message", onMessage);
+    socket.on("chat:message:deleted", onDeleted);
+    socket.on("chat:typing", onTyping);
+    socket.on("chat:typing:stop", onTypingStop);
+
+    return () => {
+      socket.emit("chat:leave", room);
+      socket.off("chat:message", onMessage);
+      socket.off("chat:message:deleted", onDeleted);
+      socket.off("chat:typing", onTyping);
+      socket.off("chat:typing:stop", onTypingStop);
+      for (const t of typingTimersRef.current.values()) clearTimeout(t);
+      typingTimersRef.current.clear();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [streamEvent]);
+  }, [socket, auditId, channel, rightPanel, readOnly]);
 
   // Initial fetch on mount
   useEffect(() => {
@@ -826,11 +903,7 @@ export function ChatPanel({
     setUploading(true);
     setPendingFile(null);
     setText("");
-    fetch(`/api/audits/${auditId}/chat/typing`, {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ channel }),
-    }).catch(() => {});
+    socket?.emit("chat:typing:stop", { auditId, channel });
     try {
       const fd = new FormData();
       fd.append("channel", channel);
@@ -943,11 +1016,7 @@ export function ChatPanel({
     for (const [name, id] of mentionedUsersRef.current.entries()) {
       if (v.includes(`@${name}`)) mentionedUserIds.push(id);
     }
-    fetch(`/api/audits/${auditId}/chat/typing`, {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ channel }),
-    }).catch(() => {});
+    socket?.emit("chat:typing:stop", { auditId, channel });
 
     // Optimistic: show the message immediately
     const tempId = `temp-${crypto.randomUUID()}`;

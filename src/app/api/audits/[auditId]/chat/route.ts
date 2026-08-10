@@ -10,6 +10,7 @@ import {
 import { createNotifications } from "@/server/helpers/notifications";
 import { getCachedAuditPrivilege } from "@/server/lib/userPrivilegeCache";
 import { emitAuditEvent } from "@/server/lib/event-bus";
+import { getIO, chatRoom } from "@/server/lib/socket";
 
 export async function GET(
   req: NextRequest,
@@ -189,18 +190,18 @@ export async function POST(
         where: { id: existing.id },
         data: { text, editedAt: new Date() },
       });
-      return NextResponse.json({
-        ok: true,
-        message: {
-          id: updated.id,
-          authorName: updated.authorName,
-          authorImage: undefined as string | undefined,
-          authorRole,
-          time: updated.createdAt.toISOString(),
-          text: updated.text,
-          editedAt: updated.editedAt?.toISOString() ?? null,
-        },
-      });
+      const reusedMessage = {
+        id: updated.id,
+        authorName: updated.authorName,
+        authorImage: undefined as string | undefined,
+        authorRole,
+        time: updated.createdAt.toISOString(),
+        text: updated.text,
+        editedAt: updated.editedAt?.toISOString() ?? null,
+      };
+      getIO()?.to(chatRoom(auditId, channel)).emit("chat:message", { message: reusedMessage });
+      emitAuditEvent(auditId, "chat");
+      return NextResponse.json({ ok: true, message: reusedMessage });
     }
   }
 
@@ -296,19 +297,19 @@ export async function POST(
 
   emitAuditEvent(auditId, "chat");
 
-  return NextResponse.json({
-    ok: true,
-    message: {
-      id: message.id,
-      authorName: message.authorName,
-      authorImage: message.authorImage ?? undefined,
-      authorRole: message.authorRole ?? undefined,
-      time: message.createdAt.toISOString(),
-      text: message.text,
-      mentions: mentionedUserIds.length > 0 ? mentionedUserIds : undefined,
-      replyTo: replyToId ? { id: replyToId, authorName: replyToAuthorName ?? "", text: replyToText ?? "" } : null,
-    },
-  });
+  const newMessage = {
+    id: message.id,
+    authorName: message.authorName,
+    authorImage: message.authorImage ?? undefined,
+    authorRole: message.authorRole ?? undefined,
+    time: message.createdAt.toISOString(),
+    text: message.text,
+    mentions: mentionedUserIds.length > 0 ? mentionedUserIds : undefined,
+    replyTo: replyToId ? { id: replyToId, authorName: replyToAuthorName ?? "", text: replyToText ?? "" } : null,
+  };
+  getIO()?.to(chatRoom(auditId, channel)).emit("chat:message", { message: newMessage });
+
+  return NextResponse.json({ ok: true, message: newMessage });
 }
 
 export async function PATCH(
@@ -418,18 +419,18 @@ export async function PATCH(
 
   emitAuditEvent(auditId, "chat");
 
-  return NextResponse.json({
-    ok: true,
-    message: {
-      id: updated.id,
-      authorName: updated.authorName,
-      authorImage: updated.authorImage ?? undefined,
-      authorRole: updated.authorRole ?? undefined,
-      time: updated.createdAt.toISOString(),
-      text: updated.text,
-      editedAt: updated.editedAt?.toISOString() ?? null,
-    },
-  });
+  const updatedMessage = {
+    id: updated.id,
+    authorName: updated.authorName,
+    authorImage: updated.authorImage ?? undefined,
+    authorRole: updated.authorRole ?? undefined,
+    time: updated.createdAt.toISOString(),
+    text: updated.text,
+    editedAt: updated.editedAt?.toISOString() ?? null,
+  };
+  getIO()?.to(chatRoom(auditId, updated.channel)).emit("chat:message", { message: updatedMessage });
+
+  return NextResponse.json({ ok: true, message: updatedMessage });
 }
 
 export async function DELETE(
@@ -489,6 +490,7 @@ export async function DELETE(
   await db.chatMessage.delete({ where: { id: messageId } });
 
   emitAuditEvent(auditId, "chat");
+  getIO()?.to(chatRoom(auditId, message.channel)).emit("chat:message:deleted", { messageId });
 
   return NextResponse.json({ ok: true });
 }
