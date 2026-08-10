@@ -157,7 +157,7 @@ export default function RequestUI({
         }
         ownsLock = true;
         setLockState("owned");
-        // Heartbeat every 10s to keep lock alive
+        // Heartbeat every 10s to keep lock alive (TTL is 30s)
         heartbeat = setInterval(() => {
           fetch(releaseUrl, { method: "PATCH", keepalive: true }).catch(() => {});
         }, 10_000);

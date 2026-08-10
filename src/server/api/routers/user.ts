@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { createTRPCRouter, publicProcedure } from "@/server/api/trpc";
 import { db } from "@/server/db";
-import { searchUsers } from "@/server/lib/graphClient";
+import { searchUsers, getUserPhoto } from "@/server/lib/graphClient";
 
 export const userRouter = createTRPCRouter({
     searchDbUsers: publicProcedure
@@ -23,6 +23,15 @@ export const userRouter = createTRPCRouter({
               })
             : [];
           const photoMap = new Map(dbPhotos.map((u) => [u.id, u.image]));
+
+          // For users not yet in the DB, fetch their photo directly from Graph.
+          const missingIds = ids.filter((id) => !photoMap.get(id));
+          const graphPhotos = await Promise.all(
+            missingIds.map(async (id) => [id, await getUserPhoto(id).catch(() => null)] as const)
+          );
+          for (const [id, photo] of graphPhotos) {
+            if (photo) photoMap.set(id, photo);
+          }
 
           return azureUsers.map((u) => ({
             id: u.id,
@@ -64,5 +73,25 @@ export const userRouter = createTRPCRouter({
           email: u.email,
           image: u.image ?? null,
         }));
+      }),
+    resolveUserImage: publicProcedure
+      .input(z.object({ id: z.string() }))
+      .query(async ({ input }) => {
+        const user = await db.user.findUnique({
+          where: { id: input.id },
+          select: { image: true },
+        });
+        if (user?.image) return { image: user.image };
+
+        // No photo cached locally yet — fetch from Graph and persist for next time.
+        const photo = await getUserPhoto(input.id).catch(() => null);
+        if (photo) {
+          await db.user
+            .update({ where: { id: input.id }, data: { image: photo } })
+            .catch(() => {
+              // User may not exist in the DB yet (e.g. mid add-member flow) — ignore.
+            });
+        }
+        return { image: photo };
       }),
 });

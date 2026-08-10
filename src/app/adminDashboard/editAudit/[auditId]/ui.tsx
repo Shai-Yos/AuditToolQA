@@ -94,8 +94,8 @@ export default function EditAuditForm({ audit, currentUserName }: { audit: Audit
         setLockState("error");
       }
     };
-
     void acquire();
+
     window.addEventListener("beforeunload", releaseLock);
     return () => {
       clearInterval(heartbeat);

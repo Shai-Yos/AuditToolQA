@@ -26,6 +26,67 @@ function initials(name: string) {
   );
 }
 
+// Shows a user's avatar. If no image is known yet, it resolves one from the DB
+// (falling back to Microsoft Graph and caching the result) so existing users
+// without a locally-stored photo still get their picture shown. When `poll` is
+// true (e.g. right after adding a new member) it retries periodically since the
+// underlying DB record may not exist yet; polling stops once an image is found
+// or after 15s.
+function UserAvatar({
+  id,
+  name,
+  initialImage,
+  poll,
+  onSettled,
+}: {
+  id: string;
+  name: string;
+  initialImage: string | null;
+  poll: boolean;
+  onSettled?: () => void;
+}) {
+  const [image, setImage] = useState(initialImage);
+  const onSettledRef = useRef(onSettled);
+  onSettledRef.current = onSettled;
+
+  useEffect(() => {
+    setImage(initialImage);
+  }, [initialImage]);
+
+  const active = !image;
+
+  const { data } = api.user.resolveUserImage.useQuery(
+    { id },
+    { enabled: active, refetchInterval: active && poll ? 2000 : false }
+  );
+
+  useEffect(() => {
+    const fetched = data?.image;
+    if (fetched) {
+      setImage(fetched);
+      onSettledRef.current?.();
+    }
+  }, [data]);
+
+  useEffect(() => {
+    if (!(active && poll)) return;
+    const timeout = setTimeout(() => onSettledRef.current?.(), 15000);
+    return () => clearTimeout(timeout);
+  }, [active, poll]);
+
+  return (
+    <div className="relative h-9 w-9 shrink-0 overflow-hidden rounded-full bg-slate-700 ring-2 ring-slate-200">
+      {image ? (
+        <img src={image} alt={name} className="h-full w-full object-cover" />
+      ) : (
+        <span className="flex h-full w-full items-center justify-center text-xs font-bold text-white">
+          {initials(name)}
+        </span>
+      )}
+    </div>
+  );
+}
+
 type AppRole = "ADMIN" | "AUDIT_OWNER" | "USER";
 
 const ROLE_LABELS: Record<AppRole, string> = {
@@ -316,7 +377,7 @@ function AddMemberModal({
   defaultRole: AppRole;
   existingUsers: { id: string; email: string; role: string }[];
   onClose: () => void;
-  onAdded: () => void;
+  onAdded: (addedIds: string[]) => void;
 }) {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -383,7 +444,7 @@ function AddMemberModal({
       if (failed.length > 0) {
         setError(failed[0]?.error ?? "Some users failed to add");
       } else {
-        onAdded();
+        onAdded(selected.map((u) => u.id));
       }
     });
   }
@@ -668,6 +729,7 @@ export default function UsersClient({ users }: { users: UserRow[] }) {
   const [roleFilter, setRoleFilter] = useState<string>("All");
   const [statusFilter, setStatusFilter] = useState<"All" | "active" | "inactive">("All");
   const [modalRole, setModalRole] = useState<AppRole | null>(null);
+  const [pollingIds, setPollingIds] = useState<Set<string>>(new Set());
   const [sortKey, setSortKey] = useState<"name" | "email" | "role" | "assignedAudits" | "isActive" | "createdAt">("createdAt");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
@@ -866,19 +928,20 @@ export default function UsersClient({ users }: { users: UserRow[] }) {
                 <tr key={u.id} className="transition hover:bg-slate-50/60">
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
-                      <div className="relative h-9 w-9 shrink-0 overflow-hidden rounded-full bg-slate-700 ring-2 ring-slate-200">
-                        {u.image ? (
-                          <img
-                            src={u.image}
-                            alt={u.name}
-                            className="h-full w-full object-cover"
-                          />
-                        ) : (
-                          <span className="flex h-full w-full items-center justify-center text-xs font-bold text-white">
-                            {initials(u.name || u.email)}
-                          </span>
-                        )}
-                      </div>
+                      <UserAvatar
+                        id={u.id}
+                        name={u.name || u.email}
+                        initialImage={u.image}
+                        poll={pollingIds.has(u.id)}
+                        onSettled={() =>
+                          setPollingIds((prev) => {
+                            if (!prev.has(u.id)) return prev;
+                            const next = new Set(prev);
+                            next.delete(u.id);
+                            return next;
+                          })
+                        }
+                      />
                       <span className="font-medium text-slate-800">
                         {u.name || "—"}
                       </span>
@@ -895,7 +958,7 @@ export default function UsersClient({ users }: { users: UserRow[] }) {
                     <ActiveToggle userId={u.id} initialActive={u.isActive} />
                   </td>
                   <td className="px-6 py-4 text-slate-500">
-                    {new Date(u.createdAt).toLocaleDateString(undefined, {
+                    {new Date(u.createdAt).toLocaleDateString("en-US", {
                       month: "short",
                       day: "numeric",
                       year: "numeric",
@@ -923,7 +986,11 @@ export default function UsersClient({ users }: { users: UserRow[] }) {
           defaultRole={modalRole}
           existingUsers={users.map((u) => ({ id: u.id, email: u.email, role: u.role }))}
           onClose={() => setModalRole(null)}
-          onAdded={() => { setModalRole(null); router.refresh(); }}
+          onAdded={(addedIds) => {
+            setModalRole(null);
+            setPollingIds((prev) => new Set([...prev, ...addedIds]));
+            router.refresh();
+          }}
         />
       )}
     </div>
