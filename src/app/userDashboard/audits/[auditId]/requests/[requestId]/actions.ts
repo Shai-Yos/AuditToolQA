@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { requireUser } from "~/server/helpers/currentUser";
 import { logActivity } from "~/server/helpers/logActivity";
 import { computeClosedAt } from "~/server/lib/requestStatus";
+import { getUserPhoto } from "~/server/lib/graphClient";
 
 type State = { ok: true } | { ok: false; error: string };
 
@@ -191,7 +192,20 @@ export async function updateRequestAssignees(_: State, input: FormData | UpdateR
               role: "USER",
             },
           });
+          // Fire-and-forget: fetch photo from Graph and store it
+          void getUserPhoto(userId).then((image) => {
+            if (image) return db.user.update({ where: { id: userId }, data: { image } });
+          }).catch(() => {});
         }
+      } else {
+        // Back-fill missing photo for existing stub users
+        void db.user.findUnique({ where: { id: userId }, select: { image: true } }).then((u) => {
+          if (!u?.image) {
+            return getUserPhoto(userId).then((image) => {
+              if (image) return db.user.update({ where: { id: userId }, data: { image } });
+            });
+          }
+        }).catch(() => {});
       }
     }
   }

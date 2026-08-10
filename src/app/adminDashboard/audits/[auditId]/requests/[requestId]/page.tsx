@@ -29,7 +29,7 @@ export default async function Page({
       },
     }),
     db.user.findMany({
-      where: { auditsAssigned: { some: { auditId } } },
+      where: { OR: [{ auditsAssigned: { some: { auditId } } }, { requestAssignments: { some: { requestId } } }] },
       select: { id: true, name: true, email: true, image: true },
       orderBy: { name: "asc" },
     }),

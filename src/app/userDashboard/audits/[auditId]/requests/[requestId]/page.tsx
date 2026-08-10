@@ -47,10 +47,13 @@ export default async function Page({
     select: { id: true, name: true, email: true, image: true },
   });
 
-  // Merge audit assignees + admins (deduplicate)
+  // Merge audit assignees + request assignees + admins (deduplicate)
   const assigneeMap = new Map<string, { id: string; name: string; email: string | null; image: string | null }>();
   for (const a of request.audit.users) {
     if (a.user) assigneeMap.set(a.userId, { id: a.userId, name: a.user.name ?? a.user.email ?? a.userId, email: a.user.email, image: a.user.image });
+  }
+  for (const a of request.assignees) {
+    if (a.user && !assigneeMap.has(a.userId)) assigneeMap.set(a.userId, { id: a.userId, name: a.user.name ?? a.user.email ?? a.userId, email: a.user.email, image: a.user.image });
   }
   for (const a of admins) {
     if (!assigneeMap.has(a.id)) assigneeMap.set(a.id, { id: a.id, name: a.name ?? a.email ?? a.id, email: a.email, image: a.image });

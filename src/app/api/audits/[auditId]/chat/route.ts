@@ -10,6 +10,7 @@ import {
 import { createNotifications } from "@/server/helpers/notifications";
 import { getCachedAuditPrivilege } from "@/server/lib/userPrivilegeCache";
 import { emitAuditEvent } from "@/server/lib/event-bus";
+import { getUserPhoto } from "@/server/lib/graphClient";
 
 export async function GET(
   req: NextRequest,
@@ -218,6 +219,15 @@ export async function POST(
       ...(replyToId ? { replyToId, replyToAuthorName, replyToText } : {}),
     },
   });
+
+  // Fire-and-forget: back-fill photo if the user has none stored yet
+  void db.user.findUnique({ where: { id: user.id }, select: { image: true } }).then((u) => {
+    if (!u?.image) {
+      return getUserPhoto(user.id).then((image) => {
+        if (image) return db.user.update({ where: { id: user.id }, data: { image } });
+      });
+    }
+  }).catch(() => {});
 
   // Fire-and-forget: send notifications in background so POST returns immediately
   void (async () => {
