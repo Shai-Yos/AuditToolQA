@@ -47,6 +47,22 @@ function initials(name: string) {
   );
 }
 
+// Renders a message author's avatar image, falling back to initials if the
+// image fails to load (e.g. /api/user/photo returns 404 because the user has
+// no stored photo yet).
+function MessageAvatarImg({ src, name }: { src: string; name: string }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) return <>{initials(name)}</>;
+  return (
+    <img
+      src={src}
+      alt={name}
+      className="h-full w-full object-cover"
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
 /** Returns "Today", "Yesterday", or formatted date */
 function dayLabel(iso: string): string {
   const d = new Date(iso);
@@ -1220,7 +1236,7 @@ useEffect(() => {
                       isOwn ? "bg-blue-100 text-blue-700 ring-slate-200" : "bg-slate-100 text-slate-700 ring-slate-200",
                     ].join(" ")}>
                       {m.authorImage ? (
-                        <img src={m.authorImage} alt={m.authorName} className="h-full w-full object-cover" />
+                        <MessageAvatarImg src={m.authorImage} name={m.authorName} />
                       ) : (
                         initials(m.authorName)
                       )}

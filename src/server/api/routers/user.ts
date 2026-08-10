@@ -16,22 +16,36 @@ export const userRouter = createTRPCRouter({
           const ids = azureUsers.map((u) => u.id);
 
           // Batch-fetch photos for users already in the DB (stored at sign-in).
-          const dbPhotos = ids.length
+          // image: null = never checked, "" = checked & confirmed no photo, string = real photo.
+          const dbRows = ids.length
             ? await db.user.findMany({
                 where: { id: { in: ids } },
                 select: { id: true, image: true },
               })
             : [];
-          const photoMap = new Map(dbPhotos.map((u) => [u.id, u.image]));
+          const dbMap = new Map(dbRows.map((u) => [u.id, u.image] as const));
+          const photoMap = new Map<string, string | null>();
+          for (const [id, image] of dbMap) photoMap.set(id, image || null);
 
-          // For users not yet in the DB, fetch their photo directly from Graph.
-          const missingIds = ids.filter((id) => !photoMap.get(id));
+          // Only hit Graph for users not yet in the DB, or DB rows never checked.
+          const missingIds = ids.filter((id) => {
+            const dbImage = dbMap.get(id);
+            return dbImage === undefined || dbImage === null;
+          });
           const graphPhotos = await Promise.all(
             missingIds.map(async (id) => [id, await getUserPhoto(id).catch(() => null)] as const)
           );
           for (const [id, photo] of graphPhotos) {
             if (photo) photoMap.set(id, photo);
           }
+
+          // Cache "no photo" as "" for existing DB users so future searches
+          // skip the Graph call for them entirely.
+          await Promise.all(
+            graphPhotos
+              .filter(([id, photo]) => !photo && dbMap.has(id))
+              .map(([id]) => db.user.update({ where: { id }, data: { image: "" } }).catch(() => {}))
+          );
 
           return azureUsers.map((u) => ({
             id: u.id,
@@ -82,12 +96,18 @@ export const userRouter = createTRPCRouter({
           select: { image: true },
         });
         if (user?.image) return { image: user.image };
+        if (user && user.image === "") {
+          // Already checked before — confirmed this user has no photo.
+          return { image: null };
+        }
 
-        // No photo cached locally yet — fetch from Graph and persist for next time.
+        // Never checked (or user not in DB yet) — fetch from Graph.
         const photo = await getUserPhoto(input.id).catch(() => null);
-        if (photo) {
+        if (user) {
+          // Cache the result — the real photo, or "" to remember "no photo"
+          // so we don't hit Graph again for this user.
           await db.user
-            .update({ where: { id: input.id }, data: { image: photo } })
+            .update({ where: { id: input.id }, data: { image: photo ?? "" } })
             .catch(() => {
               // User may not exist in the DB yet (e.g. mid add-member flow) — ignore.
             });

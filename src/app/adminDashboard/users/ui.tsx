@@ -28,9 +28,11 @@ function initials(name: string) {
 
 // Shows a user's avatar. If no image is known yet, it resolves one from the DB
 // (falling back to Microsoft Graph and caching the result) so existing users
-// without a locally-stored photo still get their picture shown. When `poll` is
-// true (e.g. right after adding a new member) it retries periodically since the
-// underlying DB record may not exist yet; polling stops once an image is found
+// without a locally-stored photo still get their picture shown. `initialImage`
+// of "" means we've already confirmed this user has no Graph photo — render
+// initials directly without any query. When `poll` is true (e.g. right after
+// adding a new member) it retries periodically since the underlying DB record
+// may not exist yet; polling stops once an image is found, confirmed absent,
 // or after 15s.
 function UserAvatar({
   id,
@@ -45,15 +47,16 @@ function UserAvatar({
   poll: boolean;
   onSettled?: () => void;
 }) {
-  const [image, setImage] = useState(initialImage);
+  const knownNoPhoto = initialImage === "";
+  const [image, setImage] = useState(knownNoPhoto ? null : initialImage);
   const onSettledRef = useRef(onSettled);
   onSettledRef.current = onSettled;
 
   useEffect(() => {
-    setImage(initialImage);
+    setImage(initialImage === "" ? null : initialImage);
   }, [initialImage]);
 
-  const active = !image;
+  const active = !knownNoPhoto && !image;
 
   const { data } = api.user.resolveUserImage.useQuery(
     { id },
@@ -61,11 +64,11 @@ function UserAvatar({
   );
 
   useEffect(() => {
-    const fetched = data?.image;
-    if (fetched) {
-      setImage(fetched);
-      onSettledRef.current?.();
+    if (!data) return;
+    if (data.image) {
+      setImage(data.image);
     }
+    onSettledRef.current?.();
   }, [data]);
 
   useEffect(() => {

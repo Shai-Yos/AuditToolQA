@@ -220,11 +220,12 @@ export async function POST(
     },
   });
 
-  // Fire-and-forget: back-fill photo if the user has none stored yet
+  // Fire-and-forget: back-fill photo if it's never been checked (null).
+  // "" means already checked & confirmed no photo — skip re-hitting Graph.
   void db.user.findUnique({ where: { id: user.id }, select: { image: true } }).then((u) => {
-    if (!u?.image) {
+    if (u && u.image === null) {
       return getUserPhoto(user.id).then((image) => {
-        if (image) return db.user.update({ where: { id: user.id }, data: { image } });
+        return db.user.update({ where: { id: user.id }, data: { image: image ?? "" } });
       });
     }
   }).catch(() => {});
