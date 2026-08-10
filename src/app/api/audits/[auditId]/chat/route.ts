@@ -312,7 +312,10 @@ export async function POST(
     message: {
       id: message.id,
       authorName: message.authorName,
-      authorImage: message.authorImage ?? undefined,
+      // authorImage is stored as null in the DB (resolved live on GET instead),
+      // so the sender's own photo endpoint is used here to avoid the optimistic
+      // avatar disappearing until the next full sync/refresh.
+      authorImage: "/api/user/photo",
       authorRole: message.authorRole ?? undefined,
       time: message.createdAt.toISOString(),
       text: message.text,
