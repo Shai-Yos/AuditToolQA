@@ -26,14 +26,12 @@ function initials(name: string) {
   );
 }
 
-// Shows a user's avatar. If no image is known yet, it resolves one from the DB
-// (falling back to Microsoft Graph and caching the result) so existing users
-// without a locally-stored photo still get their picture shown. `initialImage`
-// of "" means we've already confirmed this user has no Graph photo — render
-// initials directly without any query. When `poll` is true (e.g. right after
-// adding a new member) it retries periodically since the underlying DB record
-// may not exist yet; polling stops once an image is found, confirmed absent,
-// or after 15s.
+// Shows a user's avatar. Photos are populated at sign-in (or via Azure AD
+// search when adding a member) — this component does NOT call Microsoft Graph
+// for existing table rows, it just renders initials if no image is cached.
+// The only exception is `poll`: right after adding a new member, the DB write
+// may briefly lag, so we retry a few times against the DB (not Graph directly)
+// until the row appears or 15s elapses.
 function UserAvatar({
   id,
   name,
@@ -47,35 +45,34 @@ function UserAvatar({
   poll: boolean;
   onSettled?: () => void;
 }) {
-  const knownNoPhoto = initialImage === "";
-  const [image, setImage] = useState(knownNoPhoto ? null : initialImage);
+  const [image, setImage] = useState(initialImage || null);
   const onSettledRef = useRef(onSettled);
   onSettledRef.current = onSettled;
 
   useEffect(() => {
-    setImage(initialImage === "" ? null : initialImage);
+    setImage(initialImage || null);
   }, [initialImage]);
 
-  const active = !knownNoPhoto && !image;
+  const active = poll && !image;
 
-  const { data } = api.user.resolveUserImage.useQuery(
-    { id },
-    { enabled: active, refetchInterval: active && poll ? 2000 : false }
+  const { data } = api.user.getUsersByIds.useQuery(
+    { ids: [id] },
+    { enabled: active, refetchInterval: active ? 2000 : false }
   );
 
   useEffect(() => {
-    if (!data) return;
-    if (data.image) {
-      setImage(data.image);
+    const fetched = data?.[0]?.image;
+    if (fetched) {
+      setImage(fetched);
+      onSettledRef.current?.();
     }
-    onSettledRef.current?.();
   }, [data]);
 
   useEffect(() => {
-    if (!(active && poll)) return;
+    if (!active) return;
     const timeout = setTimeout(() => onSettledRef.current?.(), 15000);
     return () => clearTimeout(timeout);
-  }, [active, poll]);
+  }, [active]);
 
   return (
     <div className="relative h-9 w-9 shrink-0 overflow-hidden rounded-full bg-slate-700 ring-2 ring-slate-200">

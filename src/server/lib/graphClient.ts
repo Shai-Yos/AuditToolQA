@@ -334,6 +334,14 @@ export async function setUserAzureGroupRole(
 
 // ─── Photo ───────────────────────────────────────────────────────────────────
 
+/** Thrown for transient failures (throttling, server errors) so callers can
+ *  distinguish "confirmed no photo" (404) from "couldn't check right now". */
+export class GraphPhotoUnavailableError extends Error {
+  constructor(public status: number) {
+    super(`Graph photo lookup failed: ${status}`);
+  }
+}
+
 export async function getUserPhoto(userId: string): Promise<string | null> {
   const token = await getAppToken();
 
@@ -342,9 +350,45 @@ export async function getUserPhoto(userId: string): Promise<string | null> {
     { headers: { Authorization: `Bearer ${token}` } }
   );
 
-  if (!res.ok) return null; // 404 = user has no photo
+  if (!res.ok) {
+    if (res.status === 404) return null; // confirmed: user has no photo
+    // 429 (throttled), 5xx, etc. — transient, do not treat as "no photo"
+    throw new GraphPhotoUnavailableError(res.status);
+  }
 
   const buffer = await res.arrayBuffer();
   const contentType = res.headers.get("content-type") ?? "image/jpeg";
   return `data:${contentType};base64,${Buffer.from(buffer).toString("base64")}`;
+}
+
+/**
+ * Resolves photos for many users with bounded concurrency to avoid tripping
+ * Graph throttling when checking a large batch at once (e.g. first load of a
+ * users table with 100+ never-checked accounts).
+ * Returns a map of userId -> photo ("" if confirmed no photo, omitted entirely
+ * if the lookup failed transiently and should be retried later).
+ */
+export async function getUserPhotosBatch(
+  userIds: string[],
+  concurrency = 8,
+): Promise<Map<string, string>> {
+  const results = new Map<string, string>();
+  let index = 0;
+
+  async function worker() {
+    while (index < userIds.length) {
+      const id = userIds[index++]!;
+      try {
+        const photo = await getUserPhoto(id);
+        results.set(id, photo ?? "");
+      } catch {
+        // Transient failure (throttled/5xx) — leave unset so it's retried next time
+        // instead of being permanently cached as "no photo".
+      }
+    }
+  }
+
+  const workers = Array.from({ length: Math.min(concurrency, userIds.length) }, worker);
+  await Promise.all(workers);
+  return results;
 }

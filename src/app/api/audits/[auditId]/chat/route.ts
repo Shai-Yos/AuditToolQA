@@ -10,7 +10,6 @@ import {
 import { createNotifications } from "@/server/helpers/notifications";
 import { getCachedAuditPrivilege } from "@/server/lib/userPrivilegeCache";
 import { emitAuditEvent } from "@/server/lib/event-bus";
-import { getUserPhoto } from "@/server/lib/graphClient";
 
 export async function GET(
   req: NextRequest,
@@ -219,16 +218,6 @@ export async function POST(
       ...(replyToId ? { replyToId, replyToAuthorName, replyToText } : {}),
     },
   });
-
-  // Fire-and-forget: back-fill photo if it's never been checked (null).
-  // "" means already checked & confirmed no photo — skip re-hitting Graph.
-  void db.user.findUnique({ where: { id: user.id }, select: { image: true } }).then((u) => {
-    if (u && u.image === null) {
-      return getUserPhoto(user.id).then((image) => {
-        return db.user.update({ where: { id: user.id }, data: { image: image ?? "" } });
-      });
-    }
-  }).catch(() => {});
 
   // Fire-and-forget: send notifications in background so POST returns immediately
   void (async () => {
