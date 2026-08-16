@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { useAuditNav } from "@/components/audit-nav-context";
+import { useAuditNav, useAuditStreamEvent } from "@/components/audit-nav-context";
 import { NewRequestModal } from "@/components/new-request-modal";
 import { getLabelPillClass } from "@/components/labelColors";
 
@@ -142,25 +142,27 @@ export default function AllRequestsUserClient({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auditId, auditTitle, liveCanCreate]);
 
-  // SSE: refresh roles when assignment changes
-  useEffect(() => {
-    const fetchRoles = async () => {
-      try {
-        const res = await fetch(`/api/audits/${auditId}/assignment`);
-        if (!res.ok) return;
-        const data = (await res.json()) as { roles: string };
-        if (data.roles !== undefined) {
-          const can = /\bFR\d+\s+(Lead|QM)\b/i.test(data.roles) || /\bBR\d+\s+(Lead|QM)\b/i.test(data.roles);
-          setLiveCanCreate(can);
-        }
-      } catch { /* ignore */ }
-    };
-    const es = new EventSource(`/api/audits/${auditId}/stream`);
-    es.onmessage = (e) => {
-      if (e.data === "assignment") void fetchRoles();
-    };
-    return () => es.close();
+  // SSE: refresh roles when assignment changes (shared connection via AuditNavProvider)
+  const fetchRoles = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/audits/${auditId}/assignment`);
+      if (!res.ok) return;
+      const data = (await res.json()) as { roles: string };
+      if (data.roles !== undefined) {
+        const can = /\bFR\d+\s+(Lead|QM)\b/i.test(data.roles) || /\bBR\d+\s+(Lead|QM)\b/i.test(data.roles);
+        setLiveCanCreate(can);
+      }
+    } catch { /* ignore */ }
   }, [auditId]);
+
+  useAuditStreamEvent(
+    useCallback(
+      (data: string) => {
+        if (data === "assignment") void fetchRoles();
+      },
+      [fetchRoles],
+    ),
+  );
 
   const statusEntries = useMemo(
     () => Object.entries(statusMap).sort((a, b) => a[1].order - b[1].order),

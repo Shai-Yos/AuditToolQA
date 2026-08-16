@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { useAuditNav } from "@/components/audit-nav-context";
+import { useAuditNav, useAuditStreamEvent } from "@/components/audit-nav-context";
 import { NewRequestModal } from "@/components/new-request-modal";
 
 type User = { id: string; name: string; roles: string[]; image?: string | null };
@@ -98,25 +98,27 @@ export default function AssigneesUI({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [audit.id, audit.title, liveCanCreate]);
 
-  // SSE: refresh roles when assignment changes
-  useEffect(() => {
-    const fetchRoles = async () => {
-      try {
-        const res = await fetch(`/api/audits/${audit.id}/assignment`);
-        if (!res.ok) return;
-        const data = (await res.json()) as { roles: string };
-        if (data.roles !== undefined) {
-          const can = /\bFR\d+\s+(Lead|QM)\b/i.test(data.roles) || /\bBR\d+\s+(Lead|QM)\b/i.test(data.roles);
-          setLiveCanCreate(can);
-        }
-      } catch { /* ignore */ }
-    };
-    const es = new EventSource(`/api/audits/${audit.id}/stream`);
-    es.onmessage = (e) => {
-      if (e.data === "assignment") void fetchRoles();
-    };
-    return () => es.close();
+  // SSE: refresh roles when assignment changes (shared connection via AuditNavProvider)
+  const fetchRoles = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/audits/${audit.id}/assignment`);
+      if (!res.ok) return;
+      const data = (await res.json()) as { roles: string };
+      if (data.roles !== undefined) {
+        const can = /\bFR\d+\s+(Lead|QM)\b/i.test(data.roles) || /\bBR\d+\s+(Lead|QM)\b/i.test(data.roles);
+        setLiveCanCreate(can);
+      }
+    } catch { /* ignore */ }
   }, [audit.id]);
+
+  useAuditStreamEvent(
+    useCallback(
+      (data: string) => {
+        if (data === "assignment") void fetchRoles();
+      },
+      [fetchRoles],
+    ),
+  );
 
   return (
     <main className="min-h-screen bg-slate-50">

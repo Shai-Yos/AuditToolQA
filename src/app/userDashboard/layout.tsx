@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { requireUser } from "@/server/helpers/currentUser";
+import { hasRegulatoryImplementationAccess } from "@/server/lib/regulatoryImplementationAccess";
 import { db } from "~/server/db";
 import UserShell from "./_components/UserShell";
 
@@ -15,7 +16,10 @@ export default async function UserLayout({
     redirect("/login");
   }
 
-  const logoConfig = await db.appConfig.findUnique({ where: { key: "appLogo" } });
+  const [logoConfig, canAccessRegulatoryImplementation] = await Promise.all([
+    db.appConfig.findUnique({ where: { key: "appLogo" } }),
+    hasRegulatoryImplementationAccess(user.id),
+  ]);
 
   return (
     <UserShell
@@ -26,6 +30,7 @@ export default async function UserLayout({
         image: user.image ?? undefined,
       }}
       appLogo={logoConfig?.value ?? null}
+      canAccessRegulatoryImplementation={canAccessRegulatoryImplementation}
     >
       {children}
     </UserShell>

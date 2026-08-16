@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { requireAdmin } from "@/server/helpers/currentUser";
+import { hasRegulatoryImplementationAccess } from "@/server/lib/regulatoryImplementationAccess";
 import { db } from "~/server/db";
 import AdminShell from "./_components/AdminShell";
 
@@ -17,8 +18,11 @@ export default async function AdminLayout({
     redirect("/login");
   }
 
-  const logoConfig = await db.appConfig.findUnique({ where: { key: "appLogo" } });
-  const pendingAccessRequests = await db.accessRequest.count({ where: { status: "PENDING" } });
+  const [logoConfig, pendingAccessRequests, canAccessRegulatoryImplementation] = await Promise.all([
+    db.appConfig.findUnique({ where: { key: "appLogo" } }),
+    db.accessRequest.count({ where: { status: "PENDING" } }),
+    hasRegulatoryImplementationAccess(user.id),
+  ]);
 
   return (
     <AdminShell
@@ -30,6 +34,7 @@ export default async function AdminLayout({
       }}
       appLogo={logoConfig?.value ?? null}
       pendingAccessRequests={pendingAccessRequests}
+      canAccessRegulatoryImplementation={canAccessRegulatoryImplementation}
     >
       {children}
     </AdminShell>

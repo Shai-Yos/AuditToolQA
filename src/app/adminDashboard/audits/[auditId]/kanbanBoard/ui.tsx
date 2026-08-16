@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { useAuditStreamEvent } from "@/components/audit-nav-context";
 import {
   DndContext,
   DragOverlay,
@@ -83,16 +84,19 @@ export default function KanbanBoardUI({
   }, [audit.id, audit.title]);
 
   useEffect(() => {
-    const auditId = audit.id;
-    const es = new EventSource(`/api/audits/${auditId}/stream`);
-    es.onmessage = (e) => {
-      if (e.data === "kanban" || e.data === "requests") router.refresh();
-    };
     const onVisible = () => { if (!document.hidden) router.refresh(); };
     document.addEventListener("visibilitychange", onVisible);
-    return () => { es.close(); document.removeEventListener("visibilitychange", onVisible); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [audit.id, router]);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [router]);
+
+  useAuditStreamEvent(
+    useCallback(
+      (data: string) => {
+        if (data === "kanban" || data === "requests") router.refresh();
+      },
+      [router],
+    ),
+  );
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),

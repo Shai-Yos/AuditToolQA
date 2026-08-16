@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { requireAuditOwner } from "@/server/helpers/currentUser";
+import { hasRegulatoryImplementationAccess } from "@/server/lib/regulatoryImplementationAccess";
 import { db } from "~/server/db";
 import AuditOwnerShell from "./_components/AuditOwnerShell";
 
@@ -17,12 +18,13 @@ export default async function AuditOwnerLayout({
     redirect("/login");
   }
 
-  const [logoConfig, ownedAudits] = await Promise.all([
+  const [logoConfig, ownedAudits, canAccessRegulatoryImplementation] = await Promise.all([
     db.appConfig.findUnique({ where: { key: "appLogo" } }),
     db.audit.findMany({
       where: { createdById: user.id },
       select: { id: true },
     }),
+    hasRegulatoryImplementationAccess(user.id),
   ]);
 
   const ownedAuditIds = ownedAudits.map((a) => a.id);
@@ -37,6 +39,7 @@ export default async function AuditOwnerLayout({
       }}
       appLogo={logoConfig?.value ?? null}
       ownedAuditIds={ownedAuditIds}
+      canAccessRegulatoryImplementation={canAccessRegulatoryImplementation}
     >
       {children}
     </AuditOwnerShell>

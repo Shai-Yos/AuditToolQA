@@ -186,6 +186,33 @@ export async function getUserAzureRole(userId: string): Promise<"ADMIN" | "USER"
 }
 
 /**
+ * Checks whether a user is a (transitive) member of a specific Azure AD group.
+ * Requires GroupMember.Read.All or Directory.Read.All application permission.
+ * Fails closed (returns false) on any error, so a Graph outage never grants access.
+ */
+export async function isMemberOfGroup(userId: string, groupId: string): Promise<boolean> {
+  try {
+    const token = await getAppToken();
+    const res = await fetch(
+      `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(userId)}/checkMemberGroups`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ groupIds: [groupId] }),
+      }
+    );
+    if (!res.ok) return false;
+    const data = (await res.json()) as { value: string[] };
+    return data.value.includes(groupId);
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Fetch all direct members of an Azure AD group (OIDs only, paginated).
  */
 export async function listGroupMembers(groupId: string): Promise<string[]> {

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useAuditStreamEvent } from "@/components/audit-nav-context";
 
 type FrRequest = {
   id: string;
@@ -96,17 +97,22 @@ export function FrRequestsStrip({
     }
   }, [auditId, frIndex, storageKey]);
 
-  // Initial fetch + SSE-driven refetch
+  // Initial fetch + SSE-driven refetch (shared connection via AuditNavProvider)
   useEffect(() => {
     void fetchRequests();
-    const es = new EventSource(`/api/audits/${auditId}/stream`);
-    es.onmessage = (e) => {
-      if (e.data === "requests" || e.data === "kanban") void fetchRequests();
-    };
     const onVisible = () => { if (!document.hidden) void fetchRequests(); };
     document.addEventListener("visibilitychange", onVisible);
-    return () => { es.close(); document.removeEventListener("visibilitychange", onVisible); };
+    return () => document.removeEventListener("visibilitychange", onVisible);
   }, [auditId, fetchRequests]);
+
+  useAuditStreamEvent(
+    useCallback(
+      (data: string) => {
+        if (data === "requests" || data === "kanban") void fetchRequests();
+      },
+      [fetchRequests],
+    ),
+  );
 
   const toggleCollapsed = () => {
     setCollapsed((v) => {

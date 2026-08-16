@@ -1,6 +1,7 @@
 import { auth } from "@/auth";
 import { db } from "@/server/db";
 import { getCachedUser, primeUserCache } from "@/server/lib/userPrivilegeCache";
+import { hasRegulatoryImplementationAccess } from "@/server/lib/regulatoryImplementationAccess";
 
 export async function requireUser() {
   const session = await auth();
@@ -53,4 +54,19 @@ export async function requireAuditOwner() {
     throw new Error("Audit owner access required");
   }
   return requireUser();
+}
+
+/**
+ * Requires the signed-in user to be a member of the Azure AD group granting
+ * access to the Regulatory Implementation of Lessons Learned library.
+ * Any authenticated role (ADMIN/AUDIT_OWNER/USER) may pass this check —
+ * access is controlled purely by group membership, not by app role.
+ */
+export async function requireRegulatoryImplementationAccess() {
+  const user = await requireUser();
+  const allowed = await hasRegulatoryImplementationAccess(user.id);
+  if (!allowed) {
+    throw new Error("Regulatory implementation access required");
+  }
+  return user;
 }

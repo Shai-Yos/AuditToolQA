@@ -2,7 +2,7 @@
 
 import { useEditor, EditorContent, ReactNodeViewRenderer, NodeViewWrapper, NodeViewContent, Node as TiptapNode } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-import { Plugin, PluginKey } from "@tiptap/pm/state";
+import { Plugin, PluginKey, TextSelection } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import Underline from "@tiptap/extension-underline";
 import Link from "@tiptap/extension-link";
@@ -225,6 +225,148 @@ const CollapsibleHeadingExtension = TiptapNode.create({
   },
 });
 
+// ── Immutable Author Stamp ───────────────────────────────────────────
+// Rendered when a new author starts editing. It's an atomic node with no
+// editable content, so its author/time text can never be typed over or
+// altered in place. A ProseMirror guard plugin (below) also blocks any
+// transaction that would delete an existing stamp (backspace, select-all
+// delete, cut, drag-out, etc.), so once written a stamp is fully immutable.
+// The only exception is a full external content resync (see
+// STAMP_BYPASS_META), which legitimately replaces the whole document.
+// Legacy stamps saved before this node existed (plain <blockquote> HTML,
+// no data-author-stamp marker) are also recognized structurally via a
+// second parseHTML rule, so previously-saved stamps get the exact same
+// immutability protection as new ones.
+const STAMP_BYPASS_META = "authorStampBypass";
+
+function countAuthorStamps(doc: any): number {
+  let count = 0;
+  doc.descendants((node: any) => {
+    if (node.type.name === "authorStamp") count++;
+    return true;
+  });
+  return count;
+}
+
+const AuthorStamp = TiptapNode.create({
+  name: "authorStamp",
+  group: "block",
+  atom: true,
+  selectable: false,
+  draggable: false,
+
+  addAttributes() {
+    return {
+      id: { default: null },
+      author: { default: "" },
+      time: { default: "" },
+    };
+  },
+
+  parseHTML() {
+    return [
+      {
+        tag: "blockquote[data-author-stamp]",
+        getAttrs: (el: any) => ({
+          id: el.getAttribute("data-id") ?? null,
+          author: el.getAttribute("data-author") ?? "",
+          time: el.getAttribute("data-time") ?? "",
+        }),
+      },
+      {
+        // Legacy stamps saved before the immutable-node fix have no
+        // data-author-stamp marker — just a plain
+        // `<blockquote><em><strong>Name</strong> · time</em></blockquote>`.
+        // Recognize that exact shape structurally so previously-saved
+        // stamps also become fully-immutable atomic nodes on load, not
+        // just newly-created ones. High priority so this is tried before
+        // StarterKit's generic blockquote parse rule.
+        tag: "blockquote",
+        priority: 1000,
+        getAttrs: (el: any) => {
+          if (el.children.length !== 1) return false;
+          const em = el.children[0];
+          if (!em || em.tagName !== "EM") return false;
+          const strong = em.querySelector("strong");
+          if (!strong || em.children.length !== 1) return false;
+          const author = (strong.textContent || "").trim();
+          if (!author) return false;
+          const time = (em.textContent || "")
+            .slice((strong.textContent || "").length)
+            .replace(/^[\s·:.\-|]+/, "")
+            .trim();
+          return { id: null, author, time };
+        },
+      },
+    ];
+  },
+
+  renderHTML({ node }: any) {
+    return [
+      "blockquote",
+      {
+        "data-author-stamp": "true",
+        "data-id": node.attrs.id,
+        "data-author": node.attrs.author,
+        "data-time": node.attrs.time,
+        contenteditable: "false",
+        class: "select-none",
+      },
+      ["em", {}, ["strong", {}, node.attrs.author], ` · ${node.attrs.time}`],
+    ];
+  },
+
+  addProseMirrorPlugins() {
+    return [
+      new Plugin({
+        key: new PluginKey("authorStampGuard"),
+        filterTransaction(tr) {
+          if (!tr.docChanged || tr.getMeta(STAMP_BYPASS_META)) return true;
+          const before = countAuthorStamps(tr.before);
+          if (before === 0) return true;
+          // Block any transaction that reduces the number of stamps in the
+          // document — this protects every stamp (including ones saved
+          // before the `id` attribute existed) from being merged away,
+          // backspaced, cut, or replaced by a select-all delete.
+          return countAuthorStamps(tr.doc) >= before;
+        },
+        // Prevent the caret from ever resting directly on a stamp's line.
+        // The doc position immediately before/after an authorStamp is a
+        // valid (but visually confusing) empty text selection, so clicking
+        // the stamp or arrowing into it would leave the cursor blinking on
+        // the name/timestamp line. Whenever the selection lands there, walk
+        // past every consecutive stamp and settle inside the nearest real
+        // paragraph instead.
+        appendTransaction(trs, oldState, newState) {
+          if (!trs.some((tr) => tr.selectionSet || tr.docChanged)) return null;
+          const sel = newState.selection;
+          if (!(sel instanceof TextSelection) || !sel.empty) return null;
+
+          const touchesStamp = (p: any) =>
+            p.nodeBefore?.type.name === "authorStamp" || p.nodeAfter?.type.name === "authorStamp";
+
+          let $pos = sel.$from;
+          if (!touchesStamp($pos)) return null;
+
+          const forward = sel.from >= oldState.selection.from;
+          let pos = sel.from;
+          while (touchesStamp($pos)) {
+            const neighbor = forward ? $pos.nodeAfter : $pos.nodeBefore;
+            if (!neighbor) break;
+            pos = forward ? pos + neighbor.nodeSize : pos - neighbor.nodeSize;
+            $pos = newState.doc.resolve(pos);
+          }
+          if (pos === sel.from) return null;
+
+          const tr = newState.tr.setSelection(TextSelection.near(newState.doc.resolve(pos), forward ? 1 : -1));
+          tr.setMeta("addToHistory", false);
+          return tr;
+        },
+      }),
+    ];
+  },
+});
+
 // ── Toolbar ─────────────────────────────────────────────────────────
 function Toolbar({ editor }: { editor: ReturnType<typeof useEditor> | null }) {
   if (!editor) return null;
@@ -423,6 +565,7 @@ export function TranscriptionEditor({
         heading: false,
       }),
       CollapsibleHeadingExtension,
+      AuthorStamp,
       Underline,
       Link.configure({
         openOnClick: true,
@@ -455,16 +598,30 @@ export function TranscriptionEditor({
     },
     onFocus: ({ editor: ed }) => {
       const author = currentAuthorRef.current;
-      if (!author || lastStampedAuthorRef.current === author) return;
+      if (!author) return;
+      // Determine the author of the LAST stamp actually present in the
+      // document right now, instead of trusting the sessionStorage-backed
+      // ref alone. That ref can go stale (e.g. the doc was cleared/replaced
+      // by another user, or this is a brand-new blank room reusing an old
+      // sessionStorage value from a previous session) — relying on it alone
+      // meant a genuinely blank/unstamped document could silently skip
+      // stamping because "this author already stamped last time".
+      let lastDocAuthor: string | null = null;
+      ed.state.doc.descendants((node: any) => {
+        if (node.type.name === "authorStamp") lastDocAuthor = node.attrs.author;
+        return true;
+      });
+      if (lastDocAuthor === author) return;
       lastStampedAuthorRef.current = author;
       if (stampKey) sessionStorage.setItem(stampKey, author);
       const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
       requestAnimationFrame(() => {
         ed.chain()
           .focus("end")
-          .insertContent(
-            `<blockquote><em><strong>${author}</strong> · ${time}</em></blockquote><p></p>`,
-          )
+          .insertContent([
+            { type: "authorStamp", attrs: { id: crypto.randomUUID(), author, time } },
+            { type: "paragraph" },
+          ])
           .focus("end")
           .run();
       });
@@ -498,7 +655,18 @@ export function TranscriptionEditor({
     }
     if (content !== lastExternalContent.current) {
       lastExternalContent.current = content;
-      editor.commands.setContent(content, { emitUpdate: false });
+      // Bypass the author-stamp deletion guard: this is a full resync of the
+      // document from the server, not a user edit, so it's allowed to
+      // replace stamps wholesale (the incoming content already contains the
+      // correct stamps from prior saves).
+      editor
+        .chain()
+        .command(({ tr }) => {
+          tr.setMeta(STAMP_BYPASS_META, true);
+          return true;
+        })
+        .setContent(content, { emitUpdate: false })
+        .run();
       // External content arrived — clear stamp author so whoever focuses next will stamp
       lastStampedAuthorRef.current = null;
       if (stampKey) sessionStorage.removeItem(stampKey);

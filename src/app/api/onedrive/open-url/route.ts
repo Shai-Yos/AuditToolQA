@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "~/server/db";
-import { requireUser } from "~/server/helpers/currentUser";
+import { requireUser, requireRegulatoryImplementationAccess } from "~/server/helpers/currentUser";
 import { getOneDriveWebUrl } from "@/server/lib/oneDriveClient";
 
-type LibraryType = "audit-plan" | "risk-assessment" | "sirt" | "audit-file";
+type LibraryType = "audit-plan" | "risk-assessment" | "sirt" | "audit-file" | "regulatory-implementation";
 
 /**
  * GET /api/onedrive/open-url?fileId=...&type=audit-plan|risk-assessment|sirt
@@ -24,6 +24,16 @@ export async function GET(request: NextRequest) {
 
   if (!fileId || !type) {
     return NextResponse.json({ error: "Missing fileId or type" }, { status: 400 });
+  }
+
+  // Regulatory Implementation library is gated by a dedicated Azure AD group,
+  // separate from generic sign-in — re-check here to prevent fileId enumeration.
+  if (type === "regulatory-implementation") {
+    try {
+      await requireRegulatoryImplementationAccess();
+    } catch {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
   }
 
   // Look up the file in the correct table to get its OneDrive path
@@ -49,6 +59,12 @@ export async function GET(request: NextRequest) {
     fileUrl = row?.fileUrl ?? null;
   } else if (type === "audit-file") {
     const row = await db.auditFile.findFirst({
+      where: { id: fileId },
+      select: { fileUrl: true },
+    });
+    fileUrl = row?.fileUrl ?? null;
+  } else if (type === "regulatory-implementation") {
+    const row = await db.regulatoryImplementationFile.findFirst({
       where: { id: fileId },
       select: { fileUrl: true },
     });

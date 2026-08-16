@@ -15,16 +15,20 @@ export type ActiveAudit = { id: string; title: string; tab: string; canCreateReq
 /** Which sidebar tabs have unseen activity */
 export type TabDots = Record<string, boolean>;
 
+type StreamListener = (data: string) => void;
+
 type AuditNavCtx = {
   activeAudit: ActiveAudit;
   setActiveAudit: (a: ActiveAudit) => void;
   tabDots: TabDots;
+  subscribeToAuditStream: (listener: StreamListener) => () => void;
 };
 
 const AuditNavContext = createContext<AuditNavCtx>({
   activeAudit: null,
   setActiveAudit: () => {},
   tabDots: {},
+  subscribeToAuditStream: () => () => {},
 });
 
 const TAB_KEYS = ["requests", "kanban", "assignees", "chat"] as const;
@@ -37,6 +41,15 @@ export function AuditNavProvider({ children }: { children: ReactNode }) {
   const seenCounts = useRef<Record<string, number>>({});
   // Previous counts from last poll
   const prevCounts = useRef<Record<string, number>>({});
+  // Extra listeners registered by page components (chats/kanban/requests/etc.)
+  // so they can react to the SAME shared EventSource instead of opening
+  // their own — avoids exhausting the browser's per-origin connection limit.
+  const streamListeners = useRef<Set<StreamListener>>(new Set());
+
+  const subscribeToAuditStream = useCallback((listener: StreamListener) => {
+    streamListeners.current.add(listener);
+    return () => { streamListeners.current.delete(listener); };
+  }, []);
 
   // When user navigates to a new tab, mark the PREVIOUS tab as "seen" and clear its dot
   const handleSetActiveAudit = useCallback((a: ActiveAudit) => {
@@ -114,6 +127,7 @@ export function AuditNavProvider({ children }: { children: ReactNode }) {
       if (e.data === "tab-counts" || e.data === "requests" || e.data === "kanban" || e.data === "chat") {
         void fetchTabCounts(auditId);
       }
+      streamListeners.current.forEach((listener) => listener(e.data));
     };
 
     // Slow fallback poll every 60s
@@ -123,7 +137,7 @@ export function AuditNavProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuditNavContext.Provider
-      value={{ activeAudit, setActiveAudit: handleSetActiveAudit, tabDots }}
+      value={{ activeAudit, setActiveAudit: handleSetActiveAudit, tabDots, subscribeToAuditStream }}
     >
       {children}
     </AuditNavContext.Provider>
@@ -132,4 +146,23 @@ export function AuditNavProvider({ children }: { children: ReactNode }) {
 
 export function useAuditNav() {
   return useContext(AuditNavContext);
+}
+
+/**
+ * Subscribe to the single shared per-audit EventSource owned by
+ * AuditNavProvider, instead of opening a new EventSource. Multiple page
+ * components (kanban, chats, requests, assignees, fr-requests-strip, ...)
+ * all need the same `/api/audits/{auditId}/stream` events; consolidating
+ * them into one connection avoids hitting the browser's per-origin
+ * connection cap (6 under HTTP/1.1, which `next dev` uses locally),
+ * which otherwise can starve out navigation/RSC fetches.
+ */
+export function useAuditStreamEvent(onEvent: (data: string) => void) {
+  const { subscribeToAuditStream } = useContext(AuditNavContext);
+  const onEventRef = useRef(onEvent);
+  useEffect(() => { onEventRef.current = onEvent; }, [onEvent]);
+  useEffect(
+    () => subscribeToAuditStream((data) => onEventRef.current(data)),
+    [subscribeToAuditStream],
+  );
 }

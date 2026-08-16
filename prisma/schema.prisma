@@ -342,3 +342,12 @@ model SirtFile {
 
   @@index([fileName])
 }
+
+model RegulatoryImplementationFile {
+  id        String   @id @default(cuid())
+  fileName  String   // path within the "Regulatory Implementation of Lessons Learned" folder, e.g. "FDA/2026.pdf"
+  fileUrl   String   @db.NVarChar(Max) // "onedrive:/AuditTool/Regulatory Implementation of Lessons Learned/..." or "folder:..."
+  createdAt DateTime @default(now())
+
+  @@index([fileName])
+}

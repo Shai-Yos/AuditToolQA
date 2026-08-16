@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState, useEffect, useRef, useCallback, useSyncExternalStore, createContext, useContext } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
-import { useAuditNav } from "@/components/audit-nav-context";
+import { useAuditNav, useAuditStreamEvent } from "@/components/audit-nav-context";
 import { NewRequestModal } from "@/components/new-request-modal";
 
 const TranscriptionEditor = dynamic(
@@ -14,8 +14,12 @@ const TranscriptionEditor = dynamic(
 
 import { FrRequestsStrip } from "@/components/fr-requests-strip";
 
-// Single SSE connection shared across all ChatPanel instances on the same page
-const AuditStreamContext = createContext<string>("");
+// Single SSE connection shared across all ChatPanel instances on the same page.
+// Each event is tagged with a monotonic `seq` so the object reference always
+// changes, even when consecutive events share the same `data` string (e.g.
+// several "chat" events in a row) — otherwise React bails the state update
+// (Object.is same-value check) and downstream effects never re-fire.
+const AuditStreamContext = createContext<{ data: string; seq: number }>({ data: "", seq: 0 });
 
 type Message = {
   id: string;
@@ -161,37 +165,40 @@ export default function ChatsUI({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const [streamEvent, setStreamEvent] = useState("");
+  const [streamEvent, setStreamEvent] = useState({ data: "", seq: 0 });
+
+  const fetchMeta = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/audits/${auditId}/meta`);
+      if (!res.ok) return;
+      const data = (await res.json()) as {
+        title: string;
+        frontRoomsCount: number;
+        statusBanner: StatusBannerItem[];
+        totalRequests: number;
+      };
+      setLiveTitle(data.title);
+      setLiveFrontRoomsCount(data.frontRoomsCount);
+      setLiveStatusBanner(data.statusBanner);
+      setLiveTotalRequests(data.totalRequests);
+    } catch { /* ignore */ }
+  }, [auditId]);
+
+  // Shared connection (via AuditNavProvider) — events forwarded to ChatPanels via context
+  useAuditStreamEvent(
+    useCallback(
+      (data: string) => {
+        setStreamEvent((prev) => ({ data, seq: prev.seq + 1 }));
+        if (data === "meta" || data === "requests" || data === "kanban") void fetchMeta();
+      },
+      [fetchMeta],
+    ),
+  );
 
   useEffect(() => {
-    const fetchMeta = async () => {
-      try {
-        const res = await fetch(`/api/audits/${auditId}/meta`);
-        if (!res.ok) return;
-        const data = (await res.json()) as {
-          title: string;
-          frontRoomsCount: number;
-          statusBanner: StatusBannerItem[];
-          totalRequests: number;
-        };
-        setLiveTitle(data.title);
-        setLiveFrontRoomsCount(data.frontRoomsCount);
-        setLiveStatusBanner(data.statusBanner);
-        setLiveTotalRequests(data.totalRequests);
-      } catch { /* ignore */ }
-    };
-
-    // One SSE connection for the whole page — events forwarded to ChatPanels via context
-    const es = new EventSource(`/api/audits/${auditId}/stream`);
-    es.onmessage = (e) => {
-      setStreamEvent(e.data);
-      if (e.data === "meta" || e.data === "requests" || e.data === "kanban") void fetchMeta();
-    };
-
     const id = setInterval(() => void fetchMeta(), 60_000);
-    return () => { es.close(); clearInterval(id); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [auditId]);
+    return () => clearInterval(id);
+  }, [fetchMeta]);
 
   return (
     <AuditStreamContext.Provider value={streamEvent}>
@@ -863,9 +870,9 @@ useEffect(() => {
   // Receive SSE events forwarded from the parent ChatsUI via context (single shared connection)
   const streamEvent = useContext(AuditStreamContext);
   useEffect(() => {
-    if (!streamEvent || streamEvent === "connected") return;
-    if (streamEvent === "chat") void fetchIncremental();
-    if (streamEvent === "typing") void fetchTyping();
+    if (!streamEvent.data || streamEvent.data === "connected") return;
+    if (streamEvent.data === "chat") void fetchIncremental();
+    if (streamEvent.data === "typing") void fetchTyping();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [streamEvent]);
 

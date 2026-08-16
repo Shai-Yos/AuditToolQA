@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { useAuditStreamEvent } from "@/components/audit-nav-context";
 import {
   DndContext,
   DragOverlay,
@@ -88,27 +89,31 @@ export default function KanbanBoardUI({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [audit.id, audit.title, canCreateRequest]);
 
-  // SSE: refresh roles and board on audit events
+  // SSE: refresh roles and board on audit events (shared connection via AuditNavProvider)
+  const fetchRoles = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/audits/${audit.id}/assignment`);
+      if (!res.ok) return;
+      const data = (await res.json()) as { roles: string };
+      if (data.roles !== undefined) setLiveRoles(data.roles);
+    } catch { /* ignore */ }
+  }, [audit.id]);
+
+  useAuditStreamEvent(
+    useCallback(
+      (data: string) => {
+        if (data === "kanban" || data === "requests") router.refresh();
+        if (data === "assignment") void fetchRoles();
+      },
+      [router, fetchRoles],
+    ),
+  );
+
   useEffect(() => {
-    const auditId = audit.id;
-    const fetchRoles = async () => {
-      try {
-        const res = await fetch(`/api/audits/${auditId}/assignment`);
-        if (!res.ok) return;
-        const data = (await res.json()) as { roles: string };
-        if (data.roles !== undefined) setLiveRoles(data.roles);
-      } catch { /* ignore */ }
-    };
-    const es = new EventSource(`/api/audits/${auditId}/stream`);
-    es.onmessage = (e) => {
-      if (e.data === "kanban" || e.data === "requests") router.refresh();
-      if (e.data === "assignment") void fetchRoles();
-    };
     const onVisible = () => { if (!document.hidden) router.refresh(); };
     document.addEventListener("visibilitychange", onVisible);
-    return () => { es.close(); document.removeEventListener("visibilitychange", onVisible); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [audit.id, router]);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [router]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
