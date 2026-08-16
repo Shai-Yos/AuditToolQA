@@ -33,8 +33,9 @@ const RIL = "Regulatory Implementation of Lessons Learned";
 const RIL_PREFIX = `${RIL}/`;
 
 // Default subfolders created automatically the first time the library is loaded.
-// Note: "/" is a path separator in this system, so "CE/MDSAP" is stored as "CE-MDSAP".
-const DEFAULT_FOLDERS = ["FDA", "CE-MDSAP", "Health Canada", "Other"];
+// The CE/MDSAP label is shown in the UI, but the stored folder key remains
+// CE-MDSAP because "/" is reserved as the path separator in this system.
+const DEFAULT_FOLDERS = ["FDA", "CE/MDSAP", "Health Canada", "Other"];
 
 /**
  * Convert a raw DB fileName to the browser-facing relative path (strips the
@@ -102,7 +103,7 @@ export async function GET() {
 //   • multipart/form-data with `kind=folder`, `path` → create folder
 export async function POST(request: NextRequest) {
   try {
-    await requireAdmin();
+    await requireRegulatoryImplementationAccess();
   } catch {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -221,7 +222,7 @@ export async function POST(request: NextRequest) {
 // DELETE /api/regulatory-implementation/files?fileId=xxx — delete a file or folder
 export async function DELETE(request: NextRequest) {
   try {
-    await requireAdmin();
+    await requireRegulatoryImplementationAccess();
   } catch {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

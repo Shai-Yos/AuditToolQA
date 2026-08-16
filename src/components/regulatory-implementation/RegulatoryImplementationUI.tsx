@@ -24,6 +24,10 @@ function splitPath(name: string): string[] {
   return name.split("/").filter(Boolean);
 }
 
+function displaySegment(name: string): string {
+  return name === "CE-MDSAP" ? "CE/MDSAP" : name;
+}
+
 const API_BASE = "/api/regulatory-implementation/files";
 const ROOT_LABEL = "Regulatory Implementation of Lessons Learned";
 
@@ -463,9 +467,9 @@ function FolderBrowser({
                       ? "text-slate-900 dark:text-white"
                       : "text-blue-600 hover:underline dark:text-blue-400"
                   }`}
-                  title={seg}
+                  title={displaySegment(seg)}
                 >
-                  {seg}
+                  {displaySegment(seg)}
                 </button>
               </span>
             ))}
@@ -578,6 +582,7 @@ function FolderBrowser({
           {subfolders.map((folder) => {
             const segs = splitPath(folder.fileName);
             const name = segs[segs.length - 1]!;
+            const displayName = displaySegment(name);
             const isVirtual = folder.id.startsWith("__virtual__:") || folder.id.startsWith("__permanent__:");
             return (
               <li key={folder.id} className="flex items-center justify-between gap-3 px-5 py-3">
@@ -589,15 +594,15 @@ function FolderBrowser({
                   <span className="text-base">📂</span>
                   <span
                     className="truncate text-xs font-semibold text-slate-900 hover:text-violet-700 dark:text-white"
-                    title={name}
+                    title={displayName}
                   >
-                    {name}
+                    {displayName}
                   </span>
                 </button>
                 {isAdmin && !isVirtual && (
                   <button
                     type="button"
-                    onClick={() => handleDelete(folder.id, name, true)}
+                    onClick={() => handleDelete(folder.id, displayName, true)}
                     disabled={deletingId === folder.id}
                     className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700 transition disabled:opacity-50 dark:border-red-800 dark:bg-red-900/30 dark:text-red-400"
                   >

@@ -12,5 +12,5 @@ export default async function AdminRegulatoryImplementationPage() {
     redirect("/login");
   }
 
-  return <RegulatoryImplementationUI isAdmin={user.role === "ADMIN"} />;
+  return <RegulatoryImplementationUI isAdmin={true} />;
 }
