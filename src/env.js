@@ -29,6 +29,11 @@ export const env = createEnv({
     OUTLOOK_TENANT_ID: z.string().optional(),
     OUTLOOK_ORGANIZER_EMAIL: z.string().optional(),
     CRON_SECRET: z.string().optional(),
+    // Keep false until delegated Tasks.ReadWrite has been granted in Entra ID.
+    PLANNER_SYNC_ENABLED: z.enum(["true", "false"]).optional(),
+    // Planner synchronization is disabled until both values are configured.
+    PLANNER_PLAN_ID: z.string().min(1).optional(),
+    PLANNER_BUCKET_ID: z.string().min(1).optional(),
   },
 
   /**
@@ -59,6 +64,9 @@ export const env = createEnv({
     OUTLOOK_TENANT_ID: process.env.OUTLOOK_TENANT_ID,
     OUTLOOK_ORGANIZER_EMAIL: process.env.OUTLOOK_ORGANIZER_EMAIL,
     CRON_SECRET: process.env.CRON_SECRET,
+    PLANNER_SYNC_ENABLED: process.env.PLANNER_SYNC_ENABLED,
+    PLANNER_PLAN_ID: process.env.PLANNER_PLAN_ID,
+    PLANNER_BUCKET_ID: process.env.PLANNER_BUCKET_ID,
   },
   /**
    * Run `build` or `dev` with `SKIP_ENV_VALIDATION` to skip env validation. This is especially

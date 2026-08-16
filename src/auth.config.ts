@@ -47,7 +47,13 @@ export const authConfig = {
       clientSecret: env.AZURE_AD_CLIENT_SECRET,
       issuer: `https://login.microsoftonline.com/${env.AZURE_AD_TENANT_ID}/v2.0`,
       authorization: {
-        params: { scope: "openid profile email User.Read" },
+        // offline_access lets server-side integrations refresh the delegated Graph
+        // token without exposing it to the browser.
+        // Do not request Tasks.ReadWrite until it has been granted in Entra ID;
+        // otherwise Azure sign-in would fail before the permission is available.
+        params: {
+          scope: `openid profile email offline_access User.Read${env.PLANNER_SYNC_ENABLED === "true" ? " Tasks.ReadWrite" : ""}`,
+        },
       },
     }),
   ],

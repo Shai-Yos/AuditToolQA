@@ -20,6 +20,8 @@ declare module "next-auth/jwt" {
     role: "ADMIN" | "USER";
     groups: string[];
     accessToken?: string;
+    refreshToken?: string;
+    accessTokenExpiresAt?: number;
     image?: string;
   }
 }

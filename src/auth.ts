@@ -107,6 +107,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     },
     jwt: async ({ token, account, profile }) => {
       if (account && profile) {
+        // Kept only in Auth.js's encrypted, HTTP-only JWT cookie. The token is
+        // intentionally not copied to the client Session object.
+        token.accessToken = account.access_token;
+        token.refreshToken = account.refresh_token;
+        token.accessTokenExpiresAt = account.expires_at ? account.expires_at * 1000 : undefined;
+
         // Store Azure OID as token.sub so session.user.id = OID everywhere
         const oid = (profile as Record<string, unknown>).oid as string | undefined;
         if (oid) token.sub = oid;

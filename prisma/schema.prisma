@@ -131,6 +131,11 @@ model Request {
 
   estimatedDeliveryDate DateTime? // Optional target delivery date
 
+  // Microsoft Planner mirror. Null means this request has not been synchronized.
+  plannerTaskId          String?  @unique @db.NVarChar(1024)
+  plannerSyncedAt        DateTime?
+  plannerSyncError       String?  @db.NVarChar(2000)
+
   lockedBy            String?  // userId of current editor (page lock)
   lockedByName        String?  // display name of current editor
   lockedAt            DateTime? // last heartbeat; lock expires after 30s
