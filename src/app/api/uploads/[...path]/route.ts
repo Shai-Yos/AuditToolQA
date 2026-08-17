@@ -42,17 +42,24 @@ export async function GET(
   // so we join them directly — do NOT add an extra "AuditTool/" prefix here.
   const oneDriveUrl = `onedrive:/${segments.join("/")}`;
 
-  const [doc, chat, auditFile, riskFile, planFile, sirtFile] = await Promise.all([
+  const [doc, chat, auditFile, riskFile, planFile, sirtFile, regulatoryFile] = await Promise.all([
     db.document.findFirst({ where: { url: oneDriveUrl }, select: { url: true } }),
     db.chatMessage.findFirst({ where: { fileUrl: oneDriveUrl }, select: { fileUrl: true } }),
     db.auditFile.findFirst({ where: { fileUrl: oneDriveUrl }, select: { fileUrl: true } }),
     db.riskAssessmentFile.findFirst({ where: { fileUrl: oneDriveUrl }, select: { fileUrl: true } }),
     db.auditPlanFile.findFirst({ where: { fileUrl: oneDriveUrl }, select: { fileUrl: true } }),
     db.sirtFile.findFirst({ where: { fileUrl: oneDriveUrl }, select: { fileUrl: true } }),
+    db.regulatoryImplementationFile.findFirst({ where: { fileUrl: oneDriveUrl }, select: { fileUrl: true } }),
   ]);
 
   const matchedOneDriveUrl =
-    doc?.url ?? chat?.fileUrl ?? auditFile?.fileUrl ?? riskFile?.fileUrl ?? planFile?.fileUrl ?? sirtFile?.fileUrl;
+    doc?.url ??
+    chat?.fileUrl ??
+    auditFile?.fileUrl ??
+    riskFile?.fileUrl ??
+    planFile?.fileUrl ??
+    sirtFile?.fileUrl ??
+    regulatoryFile?.fileUrl;
 
   if (matchedOneDriveUrl) {
     const drivePath = extractDrivePath(matchedOneDriveUrl);
