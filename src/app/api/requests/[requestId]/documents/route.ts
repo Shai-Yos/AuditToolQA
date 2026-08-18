@@ -3,6 +3,7 @@ import { join } from "path";
 import { db } from "~/server/db";
 import { revalidatePath } from "next/cache";
 import { uploadFile } from "@/server/lib/oneDriveClient";
+import { syncDocumentToPlanner, getDelegatedGraphToken } from "@/server/lib/planner";
 
 export async function POST(
   request: NextRequest,
@@ -57,10 +58,8 @@ export async function POST(
       const bytes = await file.arrayBuffer();
       const buffer = Buffer.from(bytes);
 
-      // Generate unique filename
-      const timestamp = Date.now();
       const sanitizedFilename = file.name.replace(/[\/\\:*?"<>|]/g, "_");
-      const filename = `${timestamp}-${sanitizedFilename}`;
+      const filename = sanitizedFilename;
 
       // Upload to OneDrive: /AuditTool/Audits/[Audit name]/Requests/[Request name]/[file]
       const relativePath = `Audits/${auditTitle}/Requests/${requestTitle}/${filename}`;
@@ -79,6 +78,16 @@ export async function POST(
     });
 
     const documents = await Promise.all(documentPromises);
+
+    // Pre-resolve the delegated token while still inside the request context
+    // (cookies() is only valid during the request lifecycle)
+    let plannerToken: string | undefined;
+    try { plannerToken = await getDelegatedGraphToken(); } catch { /* not signed in or planner disabled */ }
+
+    // Fire-and-forget: add OneDrive links to the Planner task (if configured)
+    void Promise.allSettled(
+      documents.map((doc) => syncDocumentToPlanner(requestId, doc.filename, doc.url, plannerToken)),
+    );
 
     // Revalidate the request page to show new documents
     revalidatePath(`/adminDashboard/audits/${auditId}/requests/${requestId}`);

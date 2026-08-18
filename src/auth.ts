@@ -9,17 +9,35 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     signIn: async ({ user, account, profile }) => {
       // Ensure user exists in DB with correct role
       const groups: string[] = (profile as Record<string, unknown>).groups as string[] ?? [];
-      let role: "ADMIN" | "AUDIT_OWNER" | "USER" = "USER";
-      if (groups.includes("8c601df7-9839-4423-8ccc-03339bb5c6cb")) {
-        role = "ADMIN";
-      } else if (groups.includes("8a7394c6-0e1d-444f-89a0-5e810ac4be89")) {
-        role = "AUDIT_OWNER";
-      } else if (groups.includes("e4ae5d7c-bf12-4d28-97d4-32a7d5d3a169") || groups.includes("053a3898-0943-415c-b6d4-fc02692be583")) {
-        role = "USER";
-      } else {
-        // Not in any group, deny access
-        return false;
+      const roles: string[] = (profile as Record<string, unknown>).roles as string[] ?? [];
+
+      const ALLOWED_GROUPS = [
+        "8c601df7-9839-4423-8ccc-03339bb5c6cb", // Admin
+        "80e58a83-b7ae-4ca1-a583-d462add96e9b", // Operator
+      ];
+      const ALLOWED_ROLES = ["Admin", "Operator"];
+
+      const isAllowed =
+        ALLOWED_ROLES.some((r) => roles.includes(r)) ||
+        ALLOWED_GROUPS.some((g) => groups.includes(g));
+
+      const prefillQuery = new URLSearchParams({
+        email: user.email ?? "",
+        name: user.name ?? "",
+      }).toString();
+
+      // If not in Azure groups/roles, check if they have an approved active DB record
+      if (!isAllowed) {
+        const dbUser = user.email
+          ? await db.user.findUnique({ where: { email: user.email }, select: { isActive: true, role: true } })
+          : null;
+        if (!dbUser?.isActive) {
+          return `/request-access?${prefillQuery}`;
+        }
+        // DB-approved user — allow sign-in, role comes from DB
       }
+
+      const role: "ADMIN" = "ADMIN";
 
       // Try to fetch the user's photo from Microsoft Graph
       let imageDataUrl: string | undefined;
@@ -43,13 +61,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       // Graph API returns and what session.user.id is set to in auth.config.ts.
       // user.id from NextAuth is the pairwise sub (app-specific, not the OID).
       const azureId = ((profile as Record<string, unknown>).oid as string | undefined) ?? user.id!;
-      // Build a redirect URL that prefills the request-access form when a
-      // user is blocked. `signIn` returning a URL aborts sign-in (no session
-      // is created), so we must pass identity via query params.
-      const prefillQuery = new URLSearchParams({
-        email: user.email ?? "",
-        name: user.name ?? "",
-      }).toString();
       const requestAccessUrl = `/request-access?${prefillQuery}`;
 
       const placeholder = await db.user.findUnique({ where: { id: azureId } });
@@ -126,13 +137,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
               where: { id: azureId },
               select: { role: true },
             });
-            if (dbUser) token.role = dbUser.role;
+            if (dbUser) token.role = dbUser.role as "ADMIN" | "AUDIT_OWNER" | "USER";
           } catch {
             // DB unavailable — fall back to Azure group claims
             const groups: string[] = (profile as Record<string, unknown>).groups as string[] ?? [];
             const ADMIN = "8c601df7-9839-4423-8ccc-03339bb5c6cb";
             const AUDIT_OWNER = "8a7394c6-0e1d-444f-89a0-5e810ac4be89";
-            token.role = groups.includes(ADMIN) ? "ADMIN" : groups.includes(AUDIT_OWNER) ? "AUDIT_OWNER" : "USER";
+            token.role = (groups.includes(ADMIN) ? "ADMIN" : groups.includes(AUDIT_OWNER) ? "AUDIT_OWNER" : "USER") as "ADMIN" | "AUDIT_OWNER" | "USER";
           }
         }
       }

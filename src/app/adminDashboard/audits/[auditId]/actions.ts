@@ -6,6 +6,7 @@ import { requireAdmin } from "~/server/helpers/currentUser";
 import { logActivity } from "~/server/helpers/logActivity";
 import { computeClosedAt } from "~/server/lib/requestStatus";
 import { emitAuditEvent } from "~/server/lib/event-bus";
+import { syncRequestBucketToPlanner } from "~/server/lib/planner";
 
 export async function updateRequestStatus(
   requestId: string,
@@ -65,8 +66,7 @@ export async function updateRequestStatus(
       },
       notifyUserIds: notifyIds,
     });
-
-    emitAuditEvent(auditId, "kanban");
+    void syncRequestBucketToPlanner(requestId, statusColumn.name);    emitAuditEvent(auditId, "kanban");
     emitAuditEvent(auditId, "tab-counts");
     revalidatePath(`/adminDashboard/audits/${auditId}`);
     return { ok: true };

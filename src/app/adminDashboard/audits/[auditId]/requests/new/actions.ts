@@ -112,6 +112,7 @@ export async function createRequest(_: State, input: FormData | CreateRequestInp
     title,
     auditTitle: audit?.title ?? "",
     labels: JSON.stringify(labels),
+    isFormal,
     estimatedDeliveryDate,
   });
 

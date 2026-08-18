@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 
 import { db } from "@/server/db";
 import { env } from "@/env";
+import { getOneDriveWebUrl } from "@/server/lib/oneDriveClient";
 
 type PlannerRequest = {
   id: string;
@@ -12,6 +13,7 @@ type PlannerRequest = {
   title: string;
   auditTitle: string;
   labels: string;
+  isFormal: boolean;
   estimatedDeliveryDate: Date | null;
 };
 
@@ -68,19 +70,24 @@ async function getDelegatedGraphToken(): Promise<string> {
   return refreshed.access_token;
 }
 
+export { getDelegatedGraphToken };
+
 function taskTitle(request: PlannerRequest): string {
   return request.trackNumber ? `${request.trackNumber}` : request.title;
 }
 
+function parseLabels(labelsJson: string, isFormal: boolean): string[] {
+  try {
+    const parsed = JSON.parse(labelsJson) as unknown;
+    const base = Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [];
+    return [isFormal ? "Formal" : "Informal", ...base];
+  } catch {
+    return [isFormal ? "Formal" : "Informal"];
+  }
+}
+
 function taskDescription(request: PlannerRequest): string {
-  const labels = (() => {
-    try {
-      const parsed = JSON.parse(request.labels) as unknown;
-      return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [];
-    } catch {
-      return [];
-    }
-  })();
+  const labels = parseLabels(request.labels, request.isFormal);
   return [
     `Audit: ${request.auditTitle || "Not specified"}`,
     `Request: ${request.title}`,
@@ -107,6 +114,76 @@ async function addTaskDescription(accessToken: string, taskId: string, descripti
   });
 }
 
+// Planner supports up to 25 category slots per plan (category1..category25).
+const CATEGORY_SLOTS = Array.from({ length: 25 }, (_, i) => `category${i + 1}`) as string[];
+
+type PlanDetails = {
+  "@odata.etag"?: string;
+  categoryDescriptions?: Record<string, string | null>;
+};
+
+/**
+ * Maps the given labels to Planner category slots.
+ * Creates new category slots in the plan for labels that don't have one yet.
+ * Returns the appliedCategories object for the task (e.g. { category1: true, category3: true }).
+ */
+async function resolveAppliedCategories(
+  accessToken: string,
+  planId: string,
+  labels: string[],
+): Promise<Record<string, boolean>> {
+  if (!labels.length) return {};
+
+  const planDetailsUrl = `https://graph.microsoft.com/v1.0/planner/plans/${encodeURIComponent(planId)}/details`;
+  const detailsRes = await fetch(planDetailsUrl, { headers: { Authorization: `Bearer ${accessToken}` } });
+  if (!detailsRes.ok) return {};
+
+  const planDetails = (await detailsRes.json()) as PlanDetails;
+  const categories: Record<string, string | null> = planDetails.categoryDescriptions ?? {};
+  const etag = planDetails["@odata.etag"];
+
+  // Build a map of existing label→slot
+  const labelToSlot: Record<string, string> = {};
+  for (const slot of CATEGORY_SLOTS) {
+    const name = categories[slot];
+    if (name) labelToSlot[name.toLowerCase()] = slot;
+  }
+
+  const newCategories: Record<string, string> = {};
+  const applied: Record<string, boolean> = {};
+
+  for (const label of labels) {
+    const key = label.toLowerCase();
+    if (labelToSlot[key]) {
+      applied[labelToSlot[key]!] = true;
+    } else {
+      // Find a free slot
+      const freeSlot = CATEGORY_SLOTS.find((s) => !categories[s] && !newCategories[s]);
+      if (freeSlot) {
+        newCategories[freeSlot] = label;
+        labelToSlot[key] = freeSlot;
+        applied[freeSlot] = true;
+      }
+    }
+  }
+
+  // Patch the plan with any new category names
+  if (Object.keys(newCategories).length > 0 && etag) {
+    await fetch(planDetailsUrl, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+        "If-Match": etag,
+        Prefer: "return=representation",
+      },
+      body: JSON.stringify({ categoryDescriptions: newCategories }),
+    });
+  }
+
+  return applied;
+}
+
 /**
  * Mirrors one newly-created audit request to the configured Planner plan.
  * Planner configuration is intentionally opt-in so deployment can precede
@@ -117,6 +194,9 @@ export async function syncNewRequestToPlanner(request: PlannerRequest): Promise<
 
   try {
     const accessToken = await getDelegatedGraphToken();
+    const labels = parseLabels(request.labels, request.isFormal);
+    const appliedCategories = await resolveAppliedCategories(accessToken, env.PLANNER_PLAN_ID!, labels);
+
     const response = await fetch("https://graph.microsoft.com/v1.0/planner/tasks", {
       method: "POST",
       headers: {
@@ -128,6 +208,7 @@ export async function syncNewRequestToPlanner(request: PlannerRequest): Promise<
         ...(env.PLANNER_BUCKET_ID ? { bucketId: env.PLANNER_BUCKET_ID } : {}),
         title: taskTitle(request),
         ...(request.estimatedDeliveryDate ? { dueDateTime: request.estimatedDeliveryDate.toISOString() } : {}),
+        ...(Object.keys(appliedCategories).length ? { appliedCategories } : {}),
       }),
     });
 
@@ -139,10 +220,6 @@ export async function syncNewRequestToPlanner(request: PlannerRequest): Promise<
       where: { id: request.id },
       data: { plannerTaskId: plannerTask.id, plannerSyncedAt: new Date(), plannerSyncError: null },
     });
-
-    // Planner stores the task description in a separate details resource.
-    // A description failure never rolls back the already-created Planner task.
-    await addTaskDescription(accessToken, plannerTask.id, taskDescription(request));
   } catch (error) {
     const detail = error instanceof Error ? error.message.slice(0, 2000) : "Unknown Planner synchronization error";
     await db.request.update({
@@ -150,5 +227,298 @@ export async function syncNewRequestToPlanner(request: PlannerRequest): Promise<
       data: { plannerSyncError: detail },
     });
     console.error(`Planner sync failed for request ${request.id}:`, error);
+  }
+}
+
+/**
+ * Syncs the current assignees of a request to the Planner task.
+ * Replaces all existing Planner assignments with the current set.
+ * azureUserIds must be the Azure OIDs of the assignees.
+ */
+export async function syncRequestAssigneesToPlanner(requestId: string, azureUserIds: string[]): Promise<void> {
+  if (!plannerEnabled()) return;
+
+  try {
+    const req = await db.request.findUnique({
+      where: { id: requestId },
+      select: { plannerTaskId: true },
+    });
+    if (!req?.plannerTaskId) return;
+
+    const accessToken = await getDelegatedGraphToken();
+
+    // Fetch current task to get etag and existing assignments
+    const taskUrl = `https://graph.microsoft.com/v1.0/planner/tasks/${encodeURIComponent(req.plannerTaskId)}`;
+    const taskRes = await fetch(taskUrl, { headers: { Authorization: `Bearer ${accessToken}` } });
+    if (!taskRes.ok) return;
+
+    const task = (await taskRes.json()) as { "@odata.etag"?: string; assignments?: Record<string, unknown> };
+    const etag = task["@odata.etag"];
+    if (!etag) return;
+
+    // Build assignments object: set new assignees to assigned, null out removed ones
+    const currentAssignees = Object.keys(task.assignments ?? {});
+    const assignments: Record<string, { "@odata.type": string; orderHint: string } | null> = {};
+
+    // Remove all current assignments not in new list
+    for (const uid of currentAssignees) {
+      if (!azureUserIds.includes(uid)) assignments[uid] = null;
+    }
+    // Add new assignments
+    for (const uid of azureUserIds) {
+      if (!currentAssignees.includes(uid)) {
+        assignments[uid] = { "@odata.type": "#microsoft.graph.plannerAssignment", orderHint: " !" };
+      }
+    }
+
+    if (Object.keys(assignments).length === 0) return;
+
+    await fetch(taskUrl, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+        "If-Match": etag,
+      },
+      body: JSON.stringify({ assignments }),
+    });
+  } catch (error) {
+    console.error(`Planner assignee sync failed for request ${requestId}:`, error);
+  }
+}
+
+/**
+ * Syncs the estimated delivery date of a request to the Planner task due date.
+ * Pass null to clear the due date.
+ */
+export async function syncRequestDueDateToPlanner(
+  requestId: string,
+  dueDate: Date | null,
+): Promise<void> {
+  if (!plannerEnabled()) return;
+
+  try {
+    const req = await db.request.findUnique({
+      where: { id: requestId },
+      select: { plannerTaskId: true },
+    });
+    if (!req?.plannerTaskId) return;
+
+    const accessToken = await getDelegatedGraphToken();
+    const taskUrl = `https://graph.microsoft.com/v1.0/planner/tasks/${encodeURIComponent(req.plannerTaskId)}`;
+    const taskRes = await fetch(taskUrl, { headers: { Authorization: `Bearer ${accessToken}` } });
+    if (!taskRes.ok) return;
+
+    const task = (await taskRes.json()) as { "@odata.etag"?: string };
+    if (!task["@odata.etag"]) return;
+
+    await fetch(taskUrl, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+        "If-Match": task["@odata.etag"],
+      },
+      body: JSON.stringify({ dueDateTime: dueDate ? dueDate.toISOString() : null }),
+    });
+  } catch (error) {
+    console.error(`Planner due date sync failed for request ${requestId}:`, error);
+  }
+}
+
+/**
+ * Syncs the current labels of a request to Planner appliedCategories.
+ * Clears old categories then applies the new set.
+ */
+export async function syncRequestCategoriesToPlanner(
+  requestId: string,
+  labels: string[],
+  isFormal: boolean,
+): Promise<void> {
+  if (!plannerEnabled()) return;
+
+  try {
+    const req = await db.request.findUnique({
+      where: { id: requestId },
+      select: { plannerTaskId: true },
+    });
+    if (!req?.plannerTaskId) return;
+
+    const accessToken = await getDelegatedGraphToken();
+    const fullLabels = parseLabels(JSON.stringify(labels), isFormal);
+    const appliedCategories = await resolveAppliedCategories(accessToken, env.PLANNER_PLAN_ID!, fullLabels);
+
+    const taskUrl = `https://graph.microsoft.com/v1.0/planner/tasks/${encodeURIComponent(req.plannerTaskId)}`;
+    const taskRes = await fetch(taskUrl, { headers: { Authorization: `Bearer ${accessToken}` } });
+    if (!taskRes.ok) return;
+
+    const task = (await taskRes.json()) as { "@odata.etag"?: string; appliedCategories?: Record<string, boolean> };
+    if (!task["@odata.etag"]) return;
+
+    // Null out all currently applied categories, then apply new ones
+    const patch: Record<string, boolean | null> = {};
+    for (const slot of Object.keys(task.appliedCategories ?? {})) {
+      patch[slot] = null;
+    }
+    Object.assign(patch, appliedCategories);
+
+    await fetch(taskUrl, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+        "If-Match": task["@odata.etag"],
+      },
+      body: JSON.stringify({ appliedCategories: patch }),
+    });
+  } catch (error) {
+    console.error(`Planner category sync failed for request ${requestId}:`, error);
+  }
+}
+
+/**
+ * Moves a Planner task into the bucket whose name matches the given status name.
+ * Creates the bucket in the plan if it doesn't exist yet.
+ */
+export async function syncRequestBucketToPlanner(requestId: string, statusName: string): Promise<void> {
+  if (!plannerEnabled()) return;
+
+  try {
+    const req = await db.request.findUnique({
+      where: { id: requestId },
+      select: { plannerTaskId: true },
+    });
+    if (!req?.plannerTaskId) return;
+
+    const accessToken = await getDelegatedGraphToken();
+    const planId = env.PLANNER_PLAN_ID!;
+
+    // List existing buckets in the plan
+    const bucketsRes = await fetch(
+      `https://graph.microsoft.com/v1.0/planner/plans/${encodeURIComponent(planId)}/buckets`,
+      { headers: { Authorization: `Bearer ${accessToken}` } },
+    );
+    if (!bucketsRes.ok) return;
+
+    const bucketsData = (await bucketsRes.json()) as { value: { id: string; name: string }[] };
+    const existing = bucketsData.value.find((b) => b.name.toLowerCase() === statusName.toLowerCase());
+
+    let bucketId: string;
+    if (existing) {
+      bucketId = existing.id;
+    } else {
+      // Create a new bucket with this status name
+      const createRes = await fetch("https://graph.microsoft.com/v1.0/planner/buckets", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ planId, name: statusName, orderHint: " !" }),
+      });
+      if (!createRes.ok) return;
+      const newBucket = (await createRes.json()) as { id: string };
+      bucketId = newBucket.id;
+    }
+
+    // Fetch task etag then patch its bucketId
+    const taskUrl = `https://graph.microsoft.com/v1.0/planner/tasks/${encodeURIComponent(req.plannerTaskId)}`;
+    const taskRes = await fetch(taskUrl, { headers: { Authorization: `Bearer ${accessToken}` } });
+    if (!taskRes.ok) return;
+
+    const task = (await taskRes.json()) as { "@odata.etag"?: string };
+    if (!task["@odata.etag"]) return;
+
+    await fetch(taskUrl, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+        "If-Match": task["@odata.etag"],
+      },
+      body: JSON.stringify({ bucketId }),
+    });
+  } catch (error) {
+    console.error(`Planner bucket sync failed for request ${requestId}:`, error);
+  }
+}
+
+/**
+ * Adds an uploaded document as a reference link on the Planner task.
+ * Only syncs OneDrive-stored files (local files lack a stable public URL).
+ */
+export async function syncDocumentToPlanner(
+  requestId: string,
+  filename: string,
+  storedUrl: string,
+  preResolvedToken?: string,
+): Promise<void> {
+  if (!plannerEnabled()) return;
+  if (!storedUrl.startsWith("onedrive:")) {
+    console.log(`[Planner] Skipping document sync for ${filename} — not on OneDrive (url: ${storedUrl})`);
+    return;
+  }
+
+  try {
+    const req = await db.request.findUnique({
+      where: { id: requestId },
+      select: { plannerTaskId: true },
+    });
+    if (!req?.plannerTaskId) {
+      console.log(`[Planner] Skipping document sync for ${filename} — no plannerTaskId on request ${requestId}`);
+      return;
+    }
+
+    const drivePath = storedUrl.replace(/^onedrive:/, "");
+    const webUrl = await getOneDriveWebUrl(drivePath);
+    if (!webUrl) {
+      console.log(`[Planner] Skipping document sync for ${filename} — could not get OneDrive webUrl for ${drivePath}`);
+      return;
+    }
+
+    const accessToken = preResolvedToken ?? await getDelegatedGraphToken();
+    const detailsUrl = `https://graph.microsoft.com/v1.0/planner/tasks/${encodeURIComponent(req.plannerTaskId)}/details`;
+
+    const detailsRes = await fetch(detailsUrl, { headers: { Authorization: `Bearer ${accessToken}` } });
+    if (!detailsRes.ok) {
+      console.error(`[Planner] Failed to fetch task details: ${detailsRes.status} ${await detailsRes.text()}`);
+      return;
+    }
+
+    const details = (await detailsRes.json()) as { "@odata.etag"?: string };
+    if (!details["@odata.etag"]) return;
+
+    // Planner reference key format per Graph API docs:
+    // encode ":" as %3A, keep "/" as-is, encode "." as %2E
+    // (encodeURIComponent is wrong — it encodes "/" as %2F which Planner rejects)
+    let decodedUrl: string;
+    try { decodedUrl = decodeURIComponent(webUrl); } catch { decodedUrl = webUrl; }
+    const encodedUrl = decodedUrl.replace(/:/g, "%3A").replace(/\./g, "%2E");
+    console.log(`[Planner] Adding reference for ${filename}, key: ${encodedUrl}`);
+
+    const patchRes = await fetch(detailsUrl, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+        "If-Match": details["@odata.etag"],
+      },
+      body: JSON.stringify({
+        references: {
+          [encodedUrl]: {
+            "@odata.type": "#microsoft.graph.plannerExternalReference",
+            alias: filename,
+            type: "Other",
+          },
+        },
+      }),
+    });
+    if (!patchRes.ok) {
+      console.error(`[Planner] Failed to add reference: ${patchRes.status} ${await patchRes.text()}`);
+    } else {
+      console.log(`[Planner] Added reference for ${filename} to task ${req.plannerTaskId}`);
+    }
+  } catch (error) {
+    console.error(`Planner document sync failed for request ${requestId}:`, error);
   }
 }

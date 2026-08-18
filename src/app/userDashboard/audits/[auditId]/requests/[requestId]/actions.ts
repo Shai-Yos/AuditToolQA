@@ -6,6 +6,7 @@ import { requireUser } from "~/server/helpers/currentUser";
 import { logActivity } from "~/server/helpers/logActivity";
 import { computeClosedAt } from "~/server/lib/requestStatus";
 import { getUserPhoto } from "~/server/lib/graphClient";
+import { syncRequestBucketToPlanner, syncRequestCategoriesToPlanner, syncRequestDueDateToPlanner } from "~/server/lib/planner";
 
 type State = { ok: true } | { ok: false; error: string };
 
@@ -133,6 +134,9 @@ export async function updateRequestBasic(_: State, input: FormData | UpdateReque
     notifyUserIds: notifyIds,
   });
 
+  void syncRequestBucketToPlanner(requestId, requestStatus.name);
+  void syncRequestCategoriesToPlanner(requestId, labels, isFormal);
+  void syncRequestDueDateToPlanner(requestId, estimatedDeliveryDate ?? null);
   revalidatePath(`/userDashboard/audits/${auditId}`);
   revalidatePath(`/userDashboard/audits/${auditId}/kanbanBoard`);
   revalidatePath(`/userDashboard/audits/${auditId}/requests`);
