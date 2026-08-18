@@ -173,10 +173,12 @@ export default function AllRequestsUserClient({
     const q = query.trim().toLowerCase();
     const rows = requests.filter((r) => {
       const matchStatus = activeStatus === "All" || r.statusName === activeStatus;
+      const formalLabel = r.isFormal ? "formal" : "informal";
       const matchQuery =
         !q ||
         (r.trackNumber ?? r.title).toLowerCase().includes(q) ||
-        r.labels.some((l) => l.toLowerCase().includes(q));
+        r.labels.some((l) => l.toLowerCase().includes(q)) ||
+        formalLabel.startsWith(q);
       const matchMine =
         (!filterAssigned && !filterCreated) ||
         (filterAssigned && r.assigneeIds.includes(currentUserId)) ||
