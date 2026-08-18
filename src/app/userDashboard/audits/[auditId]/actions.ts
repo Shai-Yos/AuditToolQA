@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { requireUser } from "~/server/helpers/currentUser";
 import { logActivity } from "~/server/helpers/logActivity";
 import { computeClosedAt } from "~/server/lib/requestStatus";
+import { syncRequestBucketToPlanner } from "~/server/lib/planner";
 
 export async function updateRequestStatus(
   requestId: string,
@@ -64,6 +65,7 @@ export async function updateRequestStatus(
       notifyUserIds: notifyIds,
     });
 
+    void syncRequestBucketToPlanner(requestId, statusColumn.name);
     revalidatePath(`/userDashboard/audits/${auditId}`);
     return { ok: true };
   } catch (error) {

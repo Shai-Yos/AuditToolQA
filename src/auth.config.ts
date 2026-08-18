@@ -27,15 +27,16 @@ if (process.env.NODE_ENV === "production") {
 }
 
 const ADMIN_GROUPS = [
-  "8c601df7-9839-4423-8ccc-03339bb5c6cb",
+  "8c601df7-9839-4423-8ccc-03339bb5c6cb", // Admin
+  "80e58a83-b7ae-4ca1-a583-d462add96e9b", // Operator
 ];
-const AUDIT_OWNER_GROUP = "8a7394c6-0e1d-444f-89a0-5e810ac4be89";
-const USER_GROUPS = ["e4ae5d7c-bf12-4d28-97d4-32a7d5d3a169", "053a3898-0943-415c-b6d4-fc02692be583"];
 
-function resolveRole(groups: string[]): "ADMIN" | "AUDIT_OWNER" | "USER" {
+// App roles (used when the app uses role-based claims instead of group claims)
+const ADMIN_ROLES = ["Admin", "Operator"];
+
+function resolveRole(groups: string[], roles: string[] = []): "ADMIN" | "AUDIT_OWNER" | "USER" {
+  if (ADMIN_ROLES.some((r) => roles.includes(r))) return "ADMIN";
   if (ADMIN_GROUPS.some((g) => groups.includes(g))) return "ADMIN";
-  if (groups.includes(AUDIT_OWNER_GROUP)) return "AUDIT_OWNER";
-  if (USER_GROUPS.some((g) => groups.includes(g))) return "USER";
   return "USER";
 }
 
@@ -47,7 +48,13 @@ export const authConfig = {
       clientSecret: env.AZURE_AD_CLIENT_SECRET,
       issuer: `https://login.microsoftonline.com/${env.AZURE_AD_TENANT_ID}/v2.0`,
       authorization: {
-        params: { scope: "openid profile email User.Read" },
+        // offline_access lets server-side integrations refresh the delegated Graph
+        // token without exposing it to the browser.
+        // Do not request Tasks.ReadWrite until it has been granted in Entra ID;
+        // otherwise Azure sign-in would fail before the permission is available.
+        params: {
+          scope: `openid profile email offline_access User.Read${env.PLANNER_SYNC_ENABLED === "true" ? " Tasks.ReadWrite" : ""}`,
+        },
       },
     }),
   ],
@@ -55,7 +62,8 @@ export const authConfig = {
     jwt: async ({ token, account, profile }) => {
       if (account && profile) {
         const groups: string[] = (profile as Record<string, unknown>).groups as string[] ?? [];
-        token.role = resolveRole(groups);
+        const roles: string[] = (profile as Record<string, unknown>).roles as string[] ?? [];
+        token.role = resolveRole(groups, roles);
         // Store the Azure Object ID (OID) as token.sub so session.user.id = OID everywhere.
         // Azure AD v2.0 `sub` is a pairwise pseudonymous id (app-specific) and differs
         // from the OID returned by Graph API. Using OID makes all lookups consistent.

@@ -6,6 +6,7 @@ import { requireUser } from "~/server/helpers/currentUser";
 import { logActivity } from "~/server/helpers/logActivity";
 import { computeClosedAt } from "~/server/lib/requestStatus";
 import { getUserPhoto } from "~/server/lib/graphClient";
+import { syncRequestAssigneesToPlanner, syncRequestBucketToPlanner, syncRequestCategoriesToPlanner, syncRequestDueDateToPlanner } from "~/server/lib/planner";
 
 type State = { ok: true } | { ok: false; error: string };
 
@@ -134,6 +135,9 @@ export async function updateRequestBasic(_: State, input: FormData | UpdateReque
     notifyUserIds: notifyIds,
   });
 
+  void syncRequestBucketToPlanner(requestId, requestStatus.name);
+  void syncRequestCategoriesToPlanner(requestId, labels, isFormal);
+  void syncRequestDueDateToPlanner(requestId, estimatedDeliveryDate ?? null);
   revalidatePath(`/adminDashboard/audits/${auditId}`);
   revalidatePath(`/adminDashboard/audits/${auditId}/kanbanBoard`);
   revalidatePath(`/adminDashboard/audits/${auditId}/requests`);
@@ -263,5 +267,11 @@ export async function updateRequestAssignees(_: State, input: FormData | UpdateR
   revalidatePath(`/adminDashboard/audits/${auditId}/kanbanBoard`);
   revalidatePath(`/adminDashboard/audits/${auditId}/requests`);
   revalidatePath(`/adminDashboard/audits/${auditId}/requests/${requestId}`);
+
+  // Sync assignees to Planner (non-critical — errors are logged but don't fail the action)
+  try {
+    await syncRequestAssigneesToPlanner(requestId, selected);
+  } catch { /* ignore */ }
+
   return { ok: true };
 }

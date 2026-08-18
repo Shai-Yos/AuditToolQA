@@ -3,6 +3,7 @@
 import { db } from "~/server/db";
 import { requireUser } from "~/server/helpers/currentUser";
 import { logActivity } from "~/server/helpers/logActivity";
+import { syncNewRequestToPlanner } from "~/server/lib/planner";
 
 type State = { ok: true; redirectTo: string } | { ok: false; error: string };
 
@@ -103,6 +104,16 @@ export async function createRequest(_: State, input: FormData | CreateRequestInp
       select: { id: true },
     });
     requestId = created.id;
+  });
+
+  await syncNewRequestToPlanner({
+    id: requestId,
+    trackNumber,
+    title,
+    auditTitle: audit?.title ?? "",
+    labels: JSON.stringify(labels),
+    isFormal,
+    estimatedDeliveryDate,
   });
 
   // Notify all assignees of this audit about the new request

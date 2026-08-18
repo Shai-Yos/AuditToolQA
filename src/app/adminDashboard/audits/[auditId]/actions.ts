@@ -5,8 +5,8 @@ import { revalidatePath } from "next/cache";
 import { requireAdmin } from "~/server/helpers/currentUser";
 import { logActivity } from "~/server/helpers/logActivity";
 import { computeClosedAt } from "~/server/lib/requestStatus";
-import { emitAuditEvent, emitAuditTabCounts } from "~/server/lib/event-bus";
-import { getAuditTabCounts } from "~/server/lib/audit-tab-counts";
+import { emitAuditEvent } from "~/server/lib/event-bus";
+import { syncRequestBucketToPlanner } from "~/server/lib/planner";
 
 export async function updateRequestStatus(
   requestId: string,
@@ -66,9 +66,8 @@ export async function updateRequestStatus(
       },
       notifyUserIds: notifyIds,
     });
-
-    emitAuditEvent(auditId, "kanban");
-    emitAuditTabCounts(auditId, await getAuditTabCounts(auditId));
+    void syncRequestBucketToPlanner(requestId, statusColumn.name);    emitAuditEvent(auditId, "kanban");
+    emitAuditEvent(auditId, "tab-counts");
     revalidatePath(`/adminDashboard/audits/${auditId}`);
     return { ok: true };
   } catch (error) {

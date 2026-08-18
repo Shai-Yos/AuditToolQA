@@ -4,8 +4,8 @@ import { db } from "~/server/db";
 import { requireUser } from "~/server/helpers/currentUser";
 import { logActivity } from "~/server/helpers/logActivity";
 import { Prisma } from "generated/prisma";
-import { emitAuditEvent, emitAuditTabCounts, emitGlobalEvent } from "~/server/lib/event-bus";
-import { getAuditTabCounts } from "~/server/lib/audit-tab-counts";
+import { emitAuditEvent, emitGlobalEvent } from "~/server/lib/event-bus";
+import { syncNewRequestToPlanner } from "~/server/lib/planner";
 
 type State = { ok: true; redirectTo: string } | { ok: false; error: string };
 
@@ -105,6 +105,16 @@ export async function createRequest(_: State, input: FormData | CreateRequestInp
     }
     throw err;
   }
+
+  await syncNewRequestToPlanner({
+    id: requestId,
+    trackNumber,
+    title,
+    auditTitle: audit?.title ?? "",
+    labels: JSON.stringify(labels),
+    isFormal,
+    estimatedDeliveryDate,
+  });
 
   // Notify all assignees of this audit about the new request
   const auditAssignees = await db.auditAssignee.findMany({
