@@ -5,7 +5,8 @@ import { revalidatePath } from "next/cache";
 import { requireAdmin } from "~/server/helpers/currentUser";
 import { logActivity } from "~/server/helpers/logActivity";
 import { computeClosedAt } from "~/server/lib/requestStatus";
-import { emitAuditEvent } from "~/server/lib/event-bus";
+import { emitAuditEvent, emitAuditTabCounts } from "~/server/lib/event-bus";
+import { getAuditTabCounts } from "@/server/lib/audit-tab-counts";
 import { syncRequestBucketToPlanner } from "~/server/lib/planner";
 
 export async function updateRequestStatus(
