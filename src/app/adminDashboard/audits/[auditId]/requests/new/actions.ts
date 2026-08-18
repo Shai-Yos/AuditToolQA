@@ -139,7 +139,7 @@ export async function createRequest(_: State, input: FormData | CreateRequestInp
   });
 
   emitAuditEvent(auditId, "requests");
-  emitAuditEvent(auditId, "tab-counts");
+  emitAuditTabCounts(auditId, await getAuditTabCounts(auditId));
   emitAuditEvent(auditId, "kanban");
   emitGlobalEvent("audits");
 

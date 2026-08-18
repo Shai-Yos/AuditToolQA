@@ -9,7 +9,8 @@ import {
 } from "@/server/lib/roomRoles";
 import { createNotifications } from "@/server/helpers/notifications";
 import { getCachedAuditPrivilege } from "@/server/lib/userPrivilegeCache";
-import { emitAuditEvent } from "@/server/lib/event-bus";
+import { emitAuditEvent, emitAuditTabCounts } from "@/server/lib/event-bus";
+import { getAuditTabCounts } from "@/server/lib/audit-tab-counts";
 
 export async function GET(
   req: NextRequest,
@@ -295,6 +296,7 @@ export async function POST(
   })();
 
   emitAuditEvent(auditId, "chat");
+  emitAuditTabCounts(auditId, await getAuditTabCounts(auditId));
 
   return NextResponse.json({
     ok: true,
@@ -420,6 +422,7 @@ export async function PATCH(
   });
 
   emitAuditEvent(auditId, "chat");
+  emitAuditTabCounts(auditId, await getAuditTabCounts(auditId));
 
   return NextResponse.json({
     ok: true,
@@ -492,6 +495,7 @@ export async function DELETE(
   await db.chatMessage.delete({ where: { id: messageId } });
 
   emitAuditEvent(auditId, "chat");
+  emitAuditTabCounts(auditId, await getAuditTabCounts(auditId));
 
   return NextResponse.json({ ok: true });
 }

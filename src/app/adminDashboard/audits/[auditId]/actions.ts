@@ -126,7 +126,7 @@ export async function cancelRequest(
     });
 
     emitAuditEvent(auditId, "kanban");
-    emitAuditEvent(auditId, "tab-counts");
+    emitAuditTabCounts(auditId, await getAuditTabCounts(auditId));
     revalidatePath(`/adminDashboard/audits/${auditId}`);
     return { ok: true };
   } catch (error) {
@@ -186,7 +186,7 @@ export async function reworkRequest(
     });
 
     emitAuditEvent(auditId, "kanban");
-    emitAuditEvent(auditId, "tab-counts");
+    emitAuditTabCounts(auditId, await getAuditTabCounts(auditId));
     revalidatePath(`/adminDashboard/audits/${auditId}`);
     return { ok: true };
   } catch (error) {

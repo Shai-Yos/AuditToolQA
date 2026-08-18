@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { join } from "path";
 import { db } from "~/server/db";
-import { requireAdmin, requireRegulatoryImplementationAccess } from "~/server/helpers/currentUser";
+import { requireRegulatoryImplementationAccess } from "~/server/helpers/currentUser";
 import {
   uploadFile,
   createFolder,

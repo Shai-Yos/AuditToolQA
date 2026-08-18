@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useEffect, useRef } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { cancelAudit } from "../actions";
@@ -28,15 +28,6 @@ export default function AllAuditsOwnerClient({ audits }: { audits: AuditCardVM[]
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [auditFilter, setAuditFilter] = useState<"all" | "myAudits" | "assignedToMe">("all");
-
-  useEffect(() => {
-    const es = new EventSource("/api/stream");
-    es.onmessage = (e) => { if (e.data === "audits") router.refresh(); };
-    const onVisible = () => { if (!document.hidden) router.refresh(); };
-    document.addEventListener("visibilitychange", onVisible);
-    return () => { es.close(); document.removeEventListener("visibilitychange", onVisible); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
