@@ -18,7 +18,7 @@ export function AuditSidebarItems({
   isAdmin?: boolean;
   isAuditOwner?: boolean;
 }) {
-  const { activeAudit, tabDots } = useAuditNav();
+  const { activeAudit } = useAuditNav();
   const pathname = usePathname();
   if (!activeAudit) return null;
 
@@ -84,7 +84,6 @@ export function AuditSidebarItems({
           : tab === "assignees"
           ? isOnAssignees
           : currentTab === tab && !isOnNewRequest && !isOnEditAudit && !isOnChats && !isOnKanban && !isOnAssignees && !isOnDashboard;
-        const showDot = !!tabDots[tab];
         return (
         <div key={tab} className="group relative flex items-center">
           <Link
@@ -100,9 +99,6 @@ export function AuditSidebarItems({
           >
             <span className="relative shrink-0">
               <Icon className="h-4 w-4" />
-              {showDot && (
-                <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-slate-900" />
-              )}
             </span>
             {!collapsed && label}
           </Link>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuditNav } from "@/components/audit-nav-context";
@@ -40,15 +40,6 @@ export default function AuditOwnerDashboardClient({
   const [query, setQuery] = useState("");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [filter, setFilter] = useState<"all" | "owned" | "assigned">("all");
-
-  useEffect(() => {
-    const es = new EventSource("/api/stream");
-    es.onmessage = (e) => { if (e.data === "audits") router.refresh(); };
-    const onVisible = () => { if (!document.hidden) router.refresh(); };
-    document.addEventListener("visibilitychange", onVisible);
-    return () => { es.close(); document.removeEventListener("visibilitychange", onVisible); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();

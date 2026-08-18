@@ -4,7 +4,8 @@ import { db } from "~/server/db";
 import { requireUser } from "~/server/helpers/currentUser";
 import { logActivity } from "~/server/helpers/logActivity";
 import { Prisma } from "generated/prisma";
-import { emitAuditEvent, emitGlobalEvent } from "~/server/lib/event-bus";
+import { emitAuditEvent, emitAuditTabCounts, emitGlobalEvent } from "~/server/lib/event-bus";
+import { getAuditTabCounts } from "~/server/lib/audit-tab-counts";
 
 type State = { ok: true; redirectTo: string } | { ok: false; error: string };
 
@@ -128,7 +129,7 @@ export async function createRequest(_: State, input: FormData | CreateRequestInp
   });
 
   emitAuditEvent(auditId, "requests");
-  emitAuditEvent(auditId, "tab-counts");
+  emitAuditTabCounts(auditId, await getAuditTabCounts(auditId));
   emitAuditEvent(auditId, "kanban");
   emitGlobalEvent("audits");
 
