@@ -9,9 +9,21 @@ if (!g.__eventBus) {
 
 export const bus = g.__eventBus;
 
+export type AuditTabCounts = {
+  requests: number;
+  kanban: number;
+  assignees: number;
+  chat: number;
+};
+
 /** Emit an event for a specific audit */
 export function emitAuditEvent(auditId: string, event: string) {
   bus.emit(`audit:${auditId}`, event);
+}
+
+/** Emit server-computed tab counts for a specific audit */
+export function emitAuditTabCounts(auditId: string, counts: AuditTabCounts) {
+  bus.emit(`audit:${auditId}`, JSON.stringify({ type: "tab-counts", counts }));
 }
 
 /** Emit an event for the global audit list */

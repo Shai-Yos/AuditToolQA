@@ -173,7 +173,8 @@ export default function KanbanBoardUI({
     return optimisticRequests.filter((r) => {
       const key = (r.trackNumber ?? r.title).toLowerCase();
       const labels = r.labels.some((l) => l.toLowerCase().includes(q));
-      return key.includes(q) || r.title.toLowerCase().includes(q) || labels;
+      const formalLabel = r.isFormal != null ? (r.isFormal ? "formal" : "informal") : "";
+      return key.includes(q) || r.title.toLowerCase().includes(q) || labels || formalLabel.startsWith(q);
     });
   }, [optimisticRequests, query]);
 

@@ -7,7 +7,8 @@ import { canAccessTranscription, canAccessComm, roleForChannel } from "@/server/
 import { createNotifications } from "@/server/helpers/notifications";
 import { getCachedAuditPrivilege } from "@/server/lib/userPrivilegeCache";
 import { uploadFile } from "@/server/lib/oneDriveClient";
-import { emitAuditEvent } from "@/server/lib/event-bus";
+import { emitAuditEvent, emitAuditTabCounts } from "@/server/lib/event-bus";
+import { getAuditTabCounts } from "@/server/lib/audit-tab-counts";
 
 const ALLOWED_TYPES = new Set([
   "application/pdf",
@@ -181,6 +182,7 @@ export async function POST(
   }
 
   emitAuditEvent(auditId, "chat");
+  emitAuditTabCounts(auditId, await getAuditTabCounts(auditId));
 
   return NextResponse.json({
     ok: true,

@@ -17,6 +17,11 @@ export type TabDots = Record<string, boolean>;
 
 type StreamListener = (data: string) => void;
 
+type TabCountsPayload = {
+  type: "tab-counts";
+  counts: Record<string, number>;
+};
+
 type AuditNavCtx = {
   activeAudit: ActiveAudit;
   setActiveAudit: (a: ActiveAudit) => void;
@@ -82,34 +87,25 @@ export function AuditNavProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  // Fetch tab-counts for the active audit and update dots
-  const fetchTabCounts = useCallback(async (auditId: string) => {
-    try {
-      const res = await fetch(`/api/audits/${auditId}/tab-counts`);
-      if (!res.ok) return;
-      const data = (await res.json()) as Record<string, number>;
+  const applyTabCounts = useCallback((auditId: string, data: Record<string, number>) => {
+    const newDots: TabDots = {};
+    for (const tab of TAB_KEYS) {
+      const key = `${auditId}:${tab}`;
+      const count = data[tab] ?? 0;
+      prevCounts.current[key] = count;
 
-      const newDots: TabDots = {};
-      for (const tab of TAB_KEYS) {
-        const key = `${auditId}:${tab}`;
-        const count = data[tab] ?? 0;
-        prevCounts.current[key] = count;
-
-        if (seenCounts.current[key] === undefined) {
-          seenCounts.current[key] = count;
-        }
-
-        const unseen = count > seenCounts.current[key]!;
-        newDots[tab] = unseen;
+      if (seenCounts.current[key] === undefined) {
+        seenCounts.current[key] = count;
       }
 
-      setTabDots((prev) => {
-        const changed = TAB_KEYS.some((t) => prev[t] !== newDots[t]);
-        return changed ? newDots : prev;
-      });
-    } catch {
-      /* ignore network errors */
+      const unseen = count > seenCounts.current[key]!;
+      newDots[tab] = unseen;
     }
+
+    setTabDots((prev) => {
+      const changed = TAB_KEYS.some((t) => prev[t] !== newDots[t]);
+      return changed ? newDots : prev;
+    });
   }, []);
 
   // SSE subscription for the active audit's tab-count updates
@@ -120,20 +116,22 @@ export function AuditNavProvider({ children }: { children: ReactNode }) {
     }
 
     const auditId = activeAudit.id;
-    void fetchTabCounts(auditId);
 
     const es = new EventSource(`/api/audits/${auditId}/stream`);
     es.onmessage = (e) => {
-      if (e.data === "tab-counts" || e.data === "requests" || e.data === "kanban" || e.data === "chat") {
-        void fetchTabCounts(auditId);
+      try {
+        const payload = JSON.parse(e.data) as TabCountsPayload;
+        if (payload?.type === "tab-counts" && payload.counts) {
+          applyTabCounts(auditId, payload.counts);
+        }
+      } catch {
+        // keep compatibility with string events while payload rollout is in progress
       }
       streamListeners.current.forEach((listener) => listener(e.data));
     };
 
-    // Slow fallback poll every 60s
-    const id = setInterval(() => void fetchTabCounts(auditId), 60_000);
-    return () => { es.close(); clearInterval(id); };
-  }, [activeAudit?.id, fetchTabCounts]);
+    return () => { es.close(); };
+  }, [activeAudit?.id, applyTabCounts]);
 
   return (
     <AuditNavContext.Provider
