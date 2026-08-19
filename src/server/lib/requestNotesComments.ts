@@ -5,20 +5,24 @@ import { requireUser } from "~/server/helpers/currentUser";
 import { revalidatePath } from "next/cache";
 import { createNotifications } from "~/server/helpers/notifications";
 import { emitRequestEvent } from "~/server/lib/event-bus";
+import { syncRequestCommentToPlanner, syncRequestNoteToPlanner } from "~/server/lib/planner";
 
 // ─── Notes ───────────────────────────────────────────────────────────────────
 
 export async function saveRequestNote(requestId: string, auditId: string, text: string) {
   const currentUser = await requireUser();
+  const authorName = currentUser.name ?? currentUser.email ?? "Unknown";
 
   await db.request.update({
     where: { id: requestId },
     data: {
       noteText: text,
-      noteLastEditedBy: currentUser.name ?? currentUser.email ?? "Unknown",
+      noteLastEditedBy: authorName,
       noteLastEditedAt: new Date(),
     },
   });
+
+  void syncRequestNoteToPlanner(requestId, authorName, text);
 
   emitRequestEvent(requestId, "notes");
   revalidatePath(`/adminDashboard/audits/${auditId}/requests/${requestId}`);
@@ -56,6 +60,7 @@ export async function addRequestComment(requestId: string, auditId: string, text
   }
 
   const authorName = currentUser.name ?? currentUser.email ?? "Unknown";
+  void syncRequestCommentToPlanner(requestId, authorName, trimmed);
 
   // Fetch request info + all assignees for notifications
   const [request, requestAssignees, adminUsers] = await Promise.all([

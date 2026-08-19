@@ -5,8 +5,9 @@ import { revalidatePath } from "next/cache";
 import { requireUser } from "~/server/helpers/currentUser";
 import { logActivity } from "~/server/helpers/logActivity";
 import { computeClosedAt } from "~/server/lib/requestStatus";
-import { getUserPhoto } from "~/server/lib/graphClient";
+import { getUserPhoto, sendMailViaGraph } from "~/server/lib/graphClient";
 import { syncRequestBucketToPlanner, syncRequestCategoriesToPlanner, syncRequestDueDateToPlanner } from "~/server/lib/planner";
+import { env } from "~/env";
 
 type State = { ok: true } | { ok: false; error: string };
 
@@ -35,6 +36,10 @@ function withUpdatedTrackTitle(currentTrackNumber: string | null, title: string)
   const sep = Math.max(sepEnDash, sepDash);
   if (sep < 0) return title;
   return `${currentTrackNumber.slice(0, sep + 1)}${title}`;
+}
+
+function resolveAppBaseUrl(): string {
+  return (env.AUTH_URL ?? env.NEXTAUTH_URL ?? "http://localhost:3002").replace(/\/$/, "");
 }
 
 export async function updateRequestBasic(_: State, input: FormData | UpdateRequestBasicInput): Promise<State> {
@@ -248,6 +253,33 @@ export async function updateRequestAssignees(_: State, input: FormData | UpdateR
       meta: { auditId, auditTitle, assignedCount: String(addedIds.length), assigneeNames },
       notifyUserIds: addedIds.filter(id => id !== currentUser.id),
     });
+
+    const creatorName = currentUser.name ?? currentUser.email ?? "A user";
+    const requestLabel = targetTitle;
+    const baseUrl = resolveAppBaseUrl();
+    const nextPath = `/open-request?auditId=${encodeURIComponent(auditId)}&requestId=${encodeURIComponent(requestId)}`;
+    const requestUrl = `${baseUrl}/login?next=${encodeURIComponent(nextPath)}`;
+
+    for (const user of addedUsers) {
+      const recipient = user.email?.trim();
+      if (!recipient || !recipient.includes("@")) continue;
+
+      const safeName = user.name ?? recipient;
+      const subject = `You were assigned to request ${requestLabel}`;
+      const html = [
+        `<p>Hello ${safeName},</p>`,
+        `<p>${creatorName} assigned you to a request in <strong>${auditTitle}</strong>.</p>`,
+        `<p><strong>Request:</strong> ${requestLabel}</p>`,
+        `<p><a href="${requestUrl}">Open request</a></p>`,
+        `<p style="color:#64748b">This is an automated message from Audit Management Tool.</p>`,
+      ].join("");
+
+      void sendMailViaGraph({
+        to: recipient,
+        subject,
+        html,
+      });
+    }
   }
 
   if (removedIds.length > 0) {

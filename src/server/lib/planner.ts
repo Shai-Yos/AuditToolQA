@@ -522,3 +522,144 @@ export async function syncDocumentToPlanner(
     console.error(`Planner document sync failed for request ${requestId}:`, error);
   }
 }
+
+/**
+ * Adds a request comment as a reply in the linked Planner task conversation thread.
+ * This is best-effort and should never block comment creation in the app.
+ */
+export async function syncRequestCommentToPlanner(
+  requestId: string,
+  authorName: string,
+  commentText: string,
+): Promise<void> {
+  if (!plannerEnabled()) return;
+
+  try {
+    const req = await db.request.findUnique({
+      where: { id: requestId },
+      select: { plannerTaskId: true },
+    });
+    if (!req?.plannerTaskId) return;
+
+    const accessToken = await getDelegatedGraphToken();
+    const taskUrl = `https://graph.microsoft.com/v1.0/planner/tasks/${encodeURIComponent(req.plannerTaskId)}?$select=conversationThreadId,planId`;
+    const taskRes = await fetch(taskUrl, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!taskRes.ok) return;
+
+    const task = (await taskRes.json()) as { conversationThreadId?: string; planId?: string };
+    if (!task.conversationThreadId || !task.planId) return;
+
+    const planUrl = `https://graph.microsoft.com/v1.0/planner/plans/${encodeURIComponent(task.planId)}?$select=container`;
+    const planRes = await fetch(planUrl, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!planRes.ok) return;
+
+    const plan = (await planRes.json()) as {
+      container?: { containerId?: string; type?: string };
+    };
+    const groupId = plan.container?.containerId;
+    if (!groupId) return;
+
+    const replyUrl = `https://graph.microsoft.com/v1.0/groups/${encodeURIComponent(groupId)}/threads/${encodeURIComponent(task.conversationThreadId)}/reply`;
+    const content = `[QA Audit Tool] ${authorName} commented:\n${commentText}`;
+
+    const replyRes = await fetch(replyUrl, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        post: {
+          body: {
+            contentType: "text",
+            content,
+          },
+        },
+      }),
+    });
+
+    if (!replyRes.ok) {
+      console.error(
+        `[Planner] Failed to post comment for request ${requestId}: ${replyRes.status} ${await replyRes.text()}`,
+      );
+    }
+  } catch (error) {
+    console.error(`Planner comment sync failed for request ${requestId}:`, error);
+  }
+}
+
+/**
+ * Adds a request note update as a reply in the linked Planner task conversation thread.
+ * This is best-effort and should never block note saving in the app.
+ */
+export async function syncRequestNoteToPlanner(
+  requestId: string,
+  authorName: string,
+  noteText: string,
+): Promise<void> {
+  if (!plannerEnabled()) return;
+
+  try {
+    const req = await db.request.findUnique({
+      where: { id: requestId },
+      select: { plannerTaskId: true },
+    });
+    if (!req?.plannerTaskId) return;
+
+    const accessToken = await getDelegatedGraphToken();
+    const taskUrl = `https://graph.microsoft.com/v1.0/planner/tasks/${encodeURIComponent(req.plannerTaskId)}?$select=conversationThreadId,planId`;
+    const taskRes = await fetch(taskUrl, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!taskRes.ok) return;
+
+    const task = (await taskRes.json()) as { conversationThreadId?: string; planId?: string };
+    if (!task.conversationThreadId || !task.planId) return;
+
+    const planUrl = `https://graph.microsoft.com/v1.0/planner/plans/${encodeURIComponent(task.planId)}?$select=container`;
+    const planRes = await fetch(planUrl, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!planRes.ok) return;
+
+    const plan = (await planRes.json()) as {
+      container?: { containerId?: string; type?: string };
+    };
+    const groupId = plan.container?.containerId;
+    if (!groupId) return;
+
+    const replyUrl = `https://graph.microsoft.com/v1.0/groups/${encodeURIComponent(groupId)}/threads/${encodeURIComponent(task.conversationThreadId)}/reply`;
+    const trimmed = noteText.trim();
+    const content = trimmed
+      ? `[QA Audit Tool] ${authorName} updated the request note:\n${trimmed}`
+      : `[QA Audit Tool] ${authorName} cleared the request note.`;
+
+    const replyRes = await fetch(replyUrl, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        post: {
+          body: {
+            contentType: "text",
+            content,
+          },
+        },
+      }),
+    });
+
+    if (!replyRes.ok) {
+      console.error(
+        `[Planner] Failed to post note for request ${requestId}: ${replyRes.status} ${await replyRes.text()}`,
+      );
+    }
+  } catch (error) {
+    console.error(`Planner note sync failed for request ${requestId}:`, error);
+  }
+}

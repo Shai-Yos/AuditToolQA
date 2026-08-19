@@ -140,6 +140,54 @@ export async function getAzureOidByEmail(email: string): Promise<string | null> 
   return data.id ?? null;
 }
 
+export async function sendMailViaGraph(params: {
+  to: string;
+  subject: string;
+  html: string;
+}): Promise<boolean> {
+  const sender = env.OUTLOOK_ORGANIZER_EMAIL;
+  if (!sender) return false;
+
+  try {
+    const token = await getAppToken();
+    const res = await fetch(
+      `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(sender)}/sendMail`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          message: {
+            subject: params.subject,
+            body: {
+              contentType: "HTML",
+              content: params.html,
+            },
+            toRecipients: [
+              {
+                emailAddress: { address: params.to },
+              },
+            ],
+          },
+          saveToSentItems: "false",
+        }),
+      },
+    );
+
+    if (!res.ok) {
+      console.error(`[Mail] Graph sendMail failed for ${params.to}: ${res.status} ${await res.text()}`);
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error(`[Mail] Graph sendMail error for ${params.to}:`, error);
+    return false;
+  }
+}
+
 // Azure AD group IDs that determine role — must match auth.config.ts
 const ADMIN_GROUPS = [
   "8c601df7-9839-4423-8ccc-03339bb5c6cb",
