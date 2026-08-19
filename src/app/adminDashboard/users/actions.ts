@@ -29,17 +29,10 @@ export async function changeUserRole(
       return { success: false, error: "Invalid user ID" };
     }
 
-    // Sync Azure AD group membership first — if this fails, we don't touch the DB
-    const user = await db.user.findUnique({ where: { id: userId }, select: { email: true, role: true } });
-    if (!user?.email) return { success: false, error: "User not found" };
+    const user = await db.user.findUnique({ where: { id: userId }, select: { id: true } });
+    if (!user) return { success: false, error: "User not found" };
 
-    const currentRole = VALID_ROLES.includes(user.role as AppRole) ? (user.role as AppRole) : "USER";
-    const azureOid = await getAzureOidByEmail(user.email);
-    if (!azureOid) return { success: false, error: "Azure user not found for this email" };
-
-    await setUserAzureGroupRole(azureOid, currentRole, newRole);
-
-    // Azure update succeeded — now persist the role in the DB
+    // The local DB is the source of truth for app roles.
     await db.user.update({
       where: { id: userId },
       data: { role: newRole },
