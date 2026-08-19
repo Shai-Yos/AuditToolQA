@@ -11,10 +11,6 @@ if (process.env.NODE_ENV === "production") {
   const authUrl = process.env.AUTH_URL;
   const nextAuthUrl = process.env.NEXTAUTH_URL;
 
-  if (!authUrl && !nextAuthUrl) {
-    throw new Error("Missing auth base URL: set AUTH_URL or NEXTAUTH_URL in production.");
-  }
-
   if (authUrl && nextAuthUrl) {
     const authOrigin = normalizeUrlOrigin(authUrl);
     const nextAuthOrigin = normalizeUrlOrigin(nextAuthUrl);
