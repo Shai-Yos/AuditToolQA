@@ -3,7 +3,20 @@ import { auth } from "@/auth";
 import { db } from "@/server/db";
 import { SignInButton } from "./ui";
 
-export default async function LoginPage() {
+function sanitizeNextPath(value?: string): string | null {
+  if (!value) return null;
+  if (!value.startsWith("/")) return null;
+  if (value.startsWith("//")) return null;
+  return value;
+}
+
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ next?: string }>;
+}) {
+  const params = await searchParams;
+  const callbackUrl = sanitizeNextPath(params.next) ?? "/";
   const session = await auth();
 
   if (session?.user) {
@@ -17,6 +30,9 @@ export default async function LoginPage() {
       // Check if user is active
       if (!user.isActive) {
         redirect("/request-access");
+      }
+      if (callbackUrl && callbackUrl !== "/") {
+        redirect(callbackUrl);
       }
       // User exists, redirect based on role
       if (session.user.role === "ADMIN") {
@@ -68,7 +84,7 @@ export default async function LoginPage() {
           </div>
 
           <div className="mt-6">
-            <SignInButton />
+            <SignInButton callbackUrl={callbackUrl} />
           </div>
         </div>
 
