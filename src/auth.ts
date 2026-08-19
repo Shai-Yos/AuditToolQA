@@ -139,11 +139,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             });
             if (dbUser) token.role = dbUser.role as "ADMIN" | "AUDIT_OWNER" | "USER";
           } catch {
-            // DB unavailable — fall back to Azure group claims
+            // DB unavailable — fall back to Azure admin/operator group claims only.
             const groups: string[] = (profile as Record<string, unknown>).groups as string[] ?? [];
-            const ADMIN = "8c601df7-9839-4423-8ccc-03339bb5c6cb";
-            const AUDIT_OWNER = "8a7394c6-0e1d-444f-89a0-5e810ac4be89";
-            token.role = (groups.includes(ADMIN) ? "ADMIN" : groups.includes(AUDIT_OWNER) ? "AUDIT_OWNER" : "USER") as "ADMIN" | "AUDIT_OWNER" | "USER";
+            const ADMIN_GROUPS = [
+              "8c601df7-9839-4423-8ccc-03339bb5c6cb",
+              "80e58a83-b7ae-4ca1-a583-d462add96e9b",
+            ];
+            token.role = (ADMIN_GROUPS.some((groupId) => groups.includes(groupId)) ? "ADMIN" : "USER") as "ADMIN" | "AUDIT_OWNER" | "USER";
           }
         }
       }

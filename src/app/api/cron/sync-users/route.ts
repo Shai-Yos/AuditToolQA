@@ -8,7 +8,6 @@ const ADMIN_GROUPS = [
   "8c601df7-9839-4423-8ccc-03339bb5c6cb",
   "80e58a83-b7ae-4ca1-a583-d462add96e9b",
 ];
-const USER_GROUPS = ["e4ae5d7c-bf12-4d28-97d4-32a7d5d3a169"];
 
 export async function GET(req: NextRequest) {
   // Verify the caller is authorised (Vercel cron sets Authorization: Bearer <CRON_SECRET>)
@@ -19,43 +18,32 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    // 1. Fetch member OIDs for each group in parallel
-    const [adminOids, userOids] = await Promise.all([
-      Promise.all(ADMIN_GROUPS.map(listGroupMembers)).then((sets) =>
-        new Set(sets.flat()),
-      ),
-      Promise.all(USER_GROUPS.map(listGroupMembers)).then((sets) =>
-        new Set(sets.flat()),
-      ),
-    ]);
+    // 1. Fetch member OIDs for admin/operator groups only.
+    const adminOids = await Promise.all(ADMIN_GROUPS.map(listGroupMembers)).then((sets) =>
+      new Set(sets.flat()),
+    );
 
     // 2. Fetch every Azure AD user (paginated)
     const azureUsers = await listAllAzureUsers();
 
-    // 3. Upsert each user into the DB in batches to avoid timeouts on large tenants
+    // 3. Upsert admin/operator users into the DB in batches to avoid timeouts on large tenants.
     let upserted = 0;
     let skipped = 0;
 
-    type UpsertItem = { id: string; email: string; name: string; role: "ADMIN" | "USER" };
+    type UpsertItem = { id: string; email: string; name: string; role: "ADMIN" };
     const toUpsert: UpsertItem[] = [];
 
     for (const u of azureUsers) {
       const email = u.mail ?? u.userPrincipalName;
       if (!email) { skipped++; continue; }
 
-      // Determine role: admin groups take priority
-      let role: "ADMIN" | "USER";
-      if (adminOids.has(u.id)) {
-        role = "ADMIN";
-      } else if (userOids.has(u.id)) {
-        role = "USER";
-      } else {
-        // Not in any known group — skip (don't grant access to the app)
+      if (!adminOids.has(u.id)) {
+        // Not in an admin/operator group — leave them DB-managed only.
         skipped++;
         continue;
       }
 
-      toUpsert.push({ id: u.id, email, name: u.displayName ?? email, role });
+      toUpsert.push({ id: u.id, email, name: u.displayName ?? email, role: "ADMIN" });
     }
 
     // Always upsert by email — it's the canonical unique key.

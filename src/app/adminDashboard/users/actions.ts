@@ -3,7 +3,6 @@
 import { db } from "@/server/db";
 import { requireUser } from "@/server/helpers/currentUser";
 import { invalidateUserCache } from "@/server/lib/userPrivilegeCache";
-import { setUserAzureGroupRole, getAzureOidByEmail } from "@/server/lib/graphClient";
 import { revalidatePath } from "next/cache";
 import { emitUserEvent } from "@/server/lib/event-bus";
 
@@ -75,15 +74,6 @@ export async function addMember(input: {
       where: { OR: [{ id: input.azureId }, { email: input.email }] },
       select: { id: true, role: true },
     });
-
-    const currentRole: AppRole = existing
-      ? VALID_ROLES.includes(existing.role as AppRole)
-        ? (existing.role as AppRole)
-        : "USER"
-      : "USER";
-
-    // Sync Azure AD group membership
-    await setUserAzureGroupRole(input.azureId, currentRole, input.role);
 
     if (existing) {
       await db.user.update({
