@@ -249,21 +249,17 @@ export function AuditCard({
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
+    timeZone: "UTC",
   };
   const startDate = new Date(audit.startDate);
   const startLabel = startDate.toLocaleDateString("en-GB", fmtOpts);
   const endLabel = audit.endDate
     ? new Date(audit.endDate).toLocaleDateString("en-GB", fmtOpts)
     : "Present";
-  const localOffset =
-    new Intl.DateTimeFormat("en", { timeZoneName: "shortOffset" })
-      .formatToParts(startDate)
-      .find((p) => p.type === "timeZoneName")
-      ?.value?.replace("GMT", "UTC") ?? "";
   const dateRange =
     (audit.startDate === audit.endDate
       ? startLabel
-      : `${startLabel} – ${endLabel}`) + (localOffset ? ` (${localOffset})` : "");
+      : `${startLabel} – ${endLabel}`) + " (UTC)";
 
   // ── Badges ───────────────────────────────────────────────────────────────
   const statusBadge = (() => {

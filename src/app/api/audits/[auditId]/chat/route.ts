@@ -74,11 +74,9 @@ export async function GET(
     messages.map((m) => {
       const liveUser = userMap.get(m.authorId);
       const liveAssignee = assigneeMap.get(m.authorId);
-      const liveRole = liveUser?.role === "ADMIN"
-        ? "Admin"
-        : liveAssignee
-          ? roleForChannel(liveAssignee.role, channel)
-          : m.authorRole;
+      const liveRole = liveAssignee
+        ? roleForChannel(liveAssignee.role, channel)
+        : m.authorRole;
       return {
         id: m.id,
         authorName: liveUser?.name ?? m.authorName,
@@ -147,15 +145,13 @@ export async function POST(
   const isAuditOwnerOfThis =
     user.role === "AUDIT_OWNER" && privilege.createdById === user.id;
 
-  let effectiveRole = "";
+  const effectiveRole = privilege.roomRolesJson
+    ? buildUserRolesFromJson(privilege.roomRolesJson).get(user.id) ?? privilege.assignee?.role ?? ""
+    : privilege.assignee?.role ?? "";
   if (user.role !== "ADMIN" && !isAuditOwnerOfThis) {
     if (!privilege.assignee) {
       return NextResponse.json({ error: "Not authorized for this audit" }, { status: 403 });
     }
-
-    effectiveRole = privilege.roomRolesJson
-      ? buildUserRolesFromJson(privilege.roomRolesJson).get(user.id) ?? privilege.assignee.role
-      : privilege.assignee.role;
 
     if (channel.endsWith("-transcription")) {
       const frNum = parseInt(channel.replace("fr", "").replace("-transcription", ""), 10);
@@ -172,9 +168,9 @@ export async function POST(
   }
 
   // Determine the author's role label for display in chat
-  const authorRole: string | null = (user.role === "ADMIN" || isAuditOwnerOfThis)
-    ? "Admin"
-    : roleForChannel(effectiveRole, channel);
+  const authorRole: string | null = effectiveRole
+    ? roleForChannel(effectiveRole, channel)
+    : null;
 
   // For transcription channels, reuse existing message instead of creating duplicates
   if (channel.endsWith("-transcription")) {

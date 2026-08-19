@@ -867,27 +867,15 @@ export default function UsersClient({ users }: { users: UserRow[] }) {
                   >
                     <span className="inline-flex items-center gap-1">
                       {label}
-                      {sortKey === key ? (
-                        <svg
-                          className={[
-                            "h-3.5 w-3.5 transition-transform duration-150 text-slate-800 dark:text-white",
-                            sortDir === "asc" ? "-rotate-90" : "rotate-90",
-                          ].join(" ")}
-                          viewBox="0 0 20 20"
-                          fill="currentColor"
-                        >
-                          <path fillRule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clipRule="evenodd" />
-                        </svg>
-                      ) : (
-                        <span className="inline-flex flex-col leading-none text-slate-300 dark:text-slate-600">
-                          <svg className="h-2.5 w-2.5" viewBox="0 0 20 20" fill="currentColor">
-                            <path fillRule="evenodd" d="M14.77 12.79a.75.75 0 01-1.06-.02L10 8.832 6.29 12.77a.75.75 0 11-1.08-1.04l4.25-4.5a.75.75 0 011.08 0l4.25 4.5a.75.75 0 01-.02 1.06z" clipRule="evenodd" />
-                          </svg>
-                          <svg className="h-2.5 w-2.5" viewBox="0 0 20 20" fill="currentColor">
-                            <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
-                          </svg>
-                        </span>
-                      )}
+                      <span
+                        className={[
+                          "text-[10px]",
+                          sortKey === key ? "opacity-100 text-slate-800 dark:text-white" : "opacity-40",
+                        ].join(" ")}
+                        aria-hidden="true"
+                      >
+                        {sortKey === key ? (sortDir === "asc" ? "▲" : "▼") : "↕"}
+                      </span>
                       {filterable && key === "role" && (
                         <ColumnFilterDropdown<string>
                           value={roleFilter}
@@ -962,7 +950,8 @@ export default function UsersClient({ users }: { users: UserRow[] }) {
                       month: "short",
                       day: "numeric",
                       year: "numeric",
-                    })}
+                      timeZone: "UTC",
+                    })} UTC
                   </td>
 
                 </tr>

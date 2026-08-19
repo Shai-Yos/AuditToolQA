@@ -448,11 +448,12 @@ const ACTIVITY_META: Record<
     label: (t) => `Audit created: ${t}`,
     detail: (_, m) => {
       const fmt = (s: string) =>
-        new Date(s).toLocaleDateString("en-US", {
+        `${new Date(s).toLocaleDateString("en-US", {
           month: "short",
           day: "numeric",
           year: "numeric",
-        });
+          timeZone: "UTC",
+        })} UTC`;
 
       const startFmt = m.startAt ? fmt(m.startAt) : null;
       const endFmt = m.endAt ? fmt(m.endAt) : null;
@@ -473,11 +474,12 @@ const ACTIVITY_META: Record<
     label: (t) => `Audit updated: ${t}`,
     detail: (_, m) => {
       const fmt = (s: string) =>
-        new Date(s).toLocaleDateString("en-US", {
+        `${new Date(s).toLocaleDateString("en-US", {
           month: "short",
           day: "numeric",
           year: "numeric",
-        });
+          timeZone: "UTC",
+        })} UTC`;
 
       const startFmt = m.startAt ? fmt(m.startAt) : null;
       const endFmt = m.endAt ? fmt(m.endAt) : null;
@@ -642,12 +644,13 @@ function ActivityRow({ item }: { item: ActivityItem }) {
   const detail = def.detail?.(item.targetTitle, meta) ?? null;
 
   const date = new Date(item.createdAt);
-  const timeLabel = date.toLocaleString("en-US", {
+  const timeLabel = `${date.toLocaleString("en-US", {
     month: "short",
     day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
-  });
+    timeZone: "UTC",
+  })} UTC`;
 
   return (
     <div className="flex items-start gap-4 px-5 py-4">

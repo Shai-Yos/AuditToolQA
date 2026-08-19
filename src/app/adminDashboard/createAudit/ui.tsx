@@ -899,12 +899,12 @@ export default function CreateAuditForm({
 
                   <div className="mt-4 text-sm text-slate-700">
                     <span className="font-semibold text-slate-900">
-                      {startDate ? new Date(startDate + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—"}
+                      {startDate ? `${new Date(startDate + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" })} UTC` : "—"}
                     </span>
                     {" "}<span className="font-semibold text-slate-900">{startTime}</span>
                     {" → "}
                     <span className="font-semibold text-slate-900">
-                      {endDate ? new Date(endDate + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—"}
+                      {endDate ? `${new Date(endDate + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" })} UTC` : "—"}
                     </span>
                     {" "}<span className="font-semibold text-slate-900">{endTime}</span>
                     {" · "}

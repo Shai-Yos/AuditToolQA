@@ -67,11 +67,12 @@ function PrintSection({ title, children }: { title: string; children: React.Reac
 }
 
 export function RequestPrintView({ data }: { data: RequestPrintData }) {
-  const printDate = new Date().toLocaleDateString("en-GB", {
+  const printDate = `${new Date().toLocaleDateString("en-GB", {
     day: "2-digit",
     month: "long",
     year: "numeric",
-  });
+    timeZone: "UTC",
+  })} UTC`;
 
   // trackNumber may look like "0005–FR1–hi test question".
   // Strip the trailing "–{title}" so the hero shows only "0005–FR1".

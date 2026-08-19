@@ -20,6 +20,7 @@ export type RequestCard = {
   createdAt: string;
   documentsCount: number;
   commentsCount: number;
+  creatorId: string | null;
   creatorName?: string | null;
   creatorImage?: string | null;
   assignees: { id: string; name: string; image: string | null }[];
@@ -263,7 +264,8 @@ export function RequestCardView({
             month: "short",
             day: "numeric",
             year: "numeric",
-          })}
+            timeZone: "UTC",
+          })} UTC
         </p>
       )}
 

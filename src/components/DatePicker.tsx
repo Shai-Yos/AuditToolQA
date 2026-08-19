@@ -74,7 +74,7 @@ export function DatePicker({
     new Date(viewYear, viewMonth, day) < new Date(today.getFullYear(), today.getMonth(), today.getDate());
 
   const displayValue = parsed
-    ? parsed.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" })
+    ? `${parsed.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })} UTC`
     : "";
 
   return (

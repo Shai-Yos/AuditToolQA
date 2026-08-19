@@ -62,6 +62,8 @@ export default function KanbanBoardUI({
   const [activeId, setActiveId] = useState<string | null>(null);
   const [optimisticRequests, setOptimisticRequests] = useState(audit.requests);
   const [query, setQuery] = useState("");
+  const [filterAssigned, setFilterAssigned] = useState(false);
+  const [filterCreated, setFilterCreated] = useState(false);
   const [showNewRequestModal, setShowNewRequestModal] = useState(false);
   const [mounted, setMounted] = useState(false);
 
@@ -169,14 +171,17 @@ export default function KanbanBoardUI({
 
   const filteredRequests = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return optimisticRequests;
+    if (!q && !filterAssigned && !filterCreated) return optimisticRequests;
     return optimisticRequests.filter((r) => {
+      const matchAssigned = !filterAssigned || r.assignees.some((a) => a.id === currentUser.id);
+      const matchCreated = !filterCreated || r.creatorId === currentUser.id;
       const key = (r.trackNumber ?? r.title).toLowerCase();
       const labels = r.labels.some((l) => l.toLowerCase().includes(q));
       const formalLabel = r.isFormal != null ? (r.isFormal ? "formal" : "informal") : "";
-      return key.includes(q) || r.title.toLowerCase().includes(q) || labels || formalLabel.startsWith(q);
+      const matchQuery = !q || key.includes(q) || r.title.toLowerCase().includes(q) || labels || formalLabel.startsWith(q);
+      return matchAssigned && matchCreated && matchQuery;
     });
-  }, [optimisticRequests, query]);
+  }, [optimisticRequests, query, filterAssigned, filterCreated, currentUser.id]);
 
   const requestsByColumn = useMemo(() => {
     const map = new Map<string, RequestCard[]>();
@@ -237,8 +242,8 @@ export default function KanbanBoardUI({
         </div>
 
         {/* Search */}
-        <div className="mb-6 flex justify-center">
-          <div className="relative w-full max-w-sm">
+        <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-center">
+          <div className="relative w-full sm:max-w-sm">
             <div className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">🔍</div>
             <input
               value={query}
@@ -247,6 +252,34 @@ export default function KanbanBoardUI({
               className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-10 pr-4 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
             />
           </div>
+          <button
+            type="button"
+            onClick={() => setFilterAssigned((v) => !v)}
+            className={`inline-flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold transition ${
+              filterAssigned
+                ? "border-blue-500 bg-blue-500 text-white shadow-sm"
+                : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50"
+            }`}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+            </svg>
+            Assigned to Me
+          </button>
+          <button
+            type="button"
+            onClick={() => setFilterCreated((v) => !v)}
+            className={`inline-flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold transition ${
+              filterCreated
+                ? "border-violet-500 bg-violet-500 text-white shadow-sm"
+                : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50"
+            }`}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+            </svg>
+            Created by Me
+          </button>
         </div>
 
         {/* Kanban board */}

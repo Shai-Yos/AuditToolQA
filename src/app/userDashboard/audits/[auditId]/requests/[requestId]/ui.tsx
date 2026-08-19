@@ -754,7 +754,7 @@ export default function RequestUI({
             <h2 className="text-sm font-bold text-slate-900">📝 Notes</h2>
             {noteLastEditor && noteLastSaved && (
               <span className="text-[10px] text-slate-400">
-                Last edited by {noteLastEditor} · {new Date(noteLastSaved).toLocaleString()}
+                Last edited by {noteLastEditor} · {new Date(noteLastSaved).toLocaleString(undefined, { timeZone: "UTC" })} UTC
               </span>
             )}
           </div>
@@ -810,7 +810,7 @@ export default function RequestUI({
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-semibold text-slate-700">{comment.authorName}</span>
                     <div className="flex items-center gap-2">
-                      <span className="text-[10px] text-slate-400">{new Date(comment.createdAt).toLocaleString()}</span>
+                      <span className="text-[10px] text-slate-400">{new Date(comment.createdAt).toLocaleString(undefined, { timeZone: "UTC" })} UTC</span>
                       {comment.authorId === currentUserId && (
                       <button
                         type="button"

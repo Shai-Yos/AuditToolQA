@@ -23,6 +23,7 @@ export default async function AllRequestsPage() {
         isFormal: true,
         createdAt: true,
         closedAt: true,
+        estimatedDeliveryDate: true,
         auditTitle: true,
         createdByName: true,
         statusName: true,
@@ -67,6 +68,9 @@ export default async function AllRequestsPage() {
     auditStatus: r.audit.status,
     createdById: r.createdById ?? null,
     assigneeIds: r.assignees.map((a) => a.userId),
+    estimatedDeliveryDate: r.estimatedDeliveryDate
+      ? new Date(r.estimatedDeliveryDate).toISOString().slice(0, 10)
+      : null,
   }));
 
   return (
