@@ -88,6 +88,15 @@ function avatarColor(seed: string) {
   return palette[Math.abs(h) % palette.length]!;
 }
 
+function formatRequestDate(isoDate: string) {
+  return new Date(isoDate).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
+
 function ReviewModal({
   request,
   action,
@@ -148,11 +157,7 @@ function ReviewModal({
   }
 
   const roleChanged = isApprove && approvedRole !== request.requestedRole;
-  const submittedLabel = new Date(request.createdAt).toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
+  const submittedLabel = formatRequestDate(request.createdAt);
 
   return (
     <div
@@ -403,7 +408,7 @@ function ReviewModal({
                   "inline-flex flex-1 items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition disabled:cursor-not-allowed disabled:opacity-60 sm:flex-none",
                   isApprove
                     ? "bg-emerald-500 shadow-emerald-500/20 hover:bg-emerald-700"
-                    : "bg-red-500 shadow-red-500/20 hover:bg-red-700",
+                    : "bg-red-600 shadow-red-600/20 hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-700 dark:hover:text-white",
                 ].join(" ")}
               >
                 {isPending ? (
@@ -778,7 +783,7 @@ export default function AccessRequestsClient({ requests }: { requests: RequestRo
                           )}
                         </td>
                         <td className="whitespace-nowrap px-6 py-4 text-xs text-slate-500 dark:text-slate-400">
-                          {new Date(r.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
+                          {formatRequestDate(r.createdAt)}
                         </td>
                         <td className="px-6 py-4">
                           <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize ${STATUS_BADGE[r.status] ?? ""}`}>
@@ -795,7 +800,7 @@ export default function AccessRequestsClient({ requests }: { requests: RequestRo
                               <button
                                 onClick={() => setModal({ request: r, action: "APPROVE" })}
                                 title="Approve"
-                                className="group inline-flex items-center gap-1.5 border-r border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-600 transition hover:bg-emerald-50 hover:text-emerald-700 dark:border-slate-700 dark:bg-slate-800 dark:text-emerald-400 dark:hover:bg-emerald-900/20"
+                                className="dark-green-btn group inline-flex items-center gap-1.5 border-r border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-600 transition hover:bg-green-100 hover:text-green-800 dark:border-slate-700 dark:bg-slate-800 dark:text-emerald-300"
                               >
                                 <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
                                   <path fillRule="evenodd" d="M16.7 5.3a1 1 0 010 1.4l-8 8a1 1 0 01-1.4 0l-4-4a1 1 0 111.4-1.4L8 12.58l7.3-7.3a1 1 0 011.4 0z" clipRule="evenodd" />

@@ -20,6 +20,10 @@ const ROLE_LABELS: Record<string, string> = {
   USER: "User",
 };
 
+function isPoolTimeoutError(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && (error as { code?: string }).code === "P2024";
+}
+
 export async function reviewAccessRequest(input: {
   requestId: string;
   action: "APPROVE" | "REJECT";
@@ -113,10 +117,17 @@ export async function reviewAccessRequest(input: {
 
       // Notify the requester only if they already have an account (e.g. a
       // role-change request). New signups won't have a User row yet.
-      const existingUser = await db.user.findUnique({
-        where: { email: request.email },
-        select: { id: true },
-      });
+      let existingUser: { id: string } | null = null;
+      try {
+        existingUser = await db.user.findUnique({
+          where: { email: request.email },
+          select: { id: true },
+        });
+      } catch (error) {
+        if (!isPoolTimeoutError(error)) throw error;
+        // Under pool pressure, skip requester notification lookup so the
+        // primary reject operation still succeeds.
+      }
 
       await logActivity({
         type: "ACCESS_REQUEST_REJECTED",
@@ -134,6 +145,12 @@ export async function reviewAccessRequest(input: {
     revalidatePath("/adminDashboard/accessRequests");
     return { success: true };
   } catch (err) {
+    if (isPoolTimeoutError(err)) {
+      return {
+        success: false,
+        error: "Database is busy right now. Please retry in a few seconds.",
+      };
+    }
     return {
       success: false,
       error: err instanceof Error ? err.message : "Unknown error",
