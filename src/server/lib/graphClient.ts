@@ -1,6 +1,7 @@
 import { env } from "@/env";
 
 let cachedToken: { value: string; expiresAt: number } | null = null;
+let cachedSearchToken: { value: string; expiresAt: number } | null = null;
 
 async function getAppToken(): Promise<string> {
   const now = Date.now();
@@ -33,6 +34,43 @@ async function getAppToken(): Promise<string> {
   };
 
   return cachedToken.value;
+}
+
+async function getSearchAppToken(): Promise<string> {
+  const now = Date.now();
+  if (cachedSearchToken && cachedSearchToken.expiresAt > now + 60_000) {
+    return cachedSearchToken.value;
+  }
+
+  const clientId = env.AZURE_AD_SEARCH_CLIENT_ID ?? env.AZURE_AD_CLIENT_ID;
+  const clientSecret = env.AZURE_AD_SEARCH_CLIENT_SECRET ?? env.AZURE_AD_CLIENT_SECRET;
+  const tenantId = env.AZURE_AD_SEARCH_TENANT_ID ?? env.AZURE_AD_TENANT_ID;
+
+  const res = await fetch(
+    `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        client_id: clientId,
+        client_secret: clientSecret,
+        scope: "https://graph.microsoft.com/.default",
+        grant_type: "client_credentials",
+      }),
+    }
+  );
+
+  if (!res.ok) {
+    throw new Error(`Failed to get search app token: ${res.status} ${await res.text()}`);
+  }
+
+  const data = (await res.json()) as { access_token: string; expires_in: number };
+  cachedSearchToken = {
+    value: data.access_token,
+    expiresAt: now + data.expires_in * 1000,
+  };
+
+  return cachedSearchToken.value;
 }
 
 export interface GraphUser {
@@ -81,7 +119,7 @@ async function searchUsersByMail(token: string, phrase: string): Promise<GraphUs
 }
 
 export async function searchUsers(query: string): Promise<GraphUser[]> {
-  const token = await getAppToken();
+  const token = await getSearchAppToken();
   const sanitized = query.replace(/"/g, "").trim();
 
   // Build search phrases: always search as-typed; if multi-word also search reversed
@@ -418,7 +456,7 @@ export class GraphPhotoUnavailableError extends Error {
 }
 
 export async function getUserPhoto(userId: string): Promise<string | null> {
-  const token = await getAppToken();
+  const token = await getSearchAppToken();
 
   const res = await fetch(
     `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(userId)}/photo/$value`,
