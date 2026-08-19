@@ -1,6 +1,6 @@
 /**
  * OneDrive file storage client using Microsoft Graph API.
- * Uses the OUTLOOK app registration (client_credentials flow) to store files
+ * Uses the Azure AD app registration (client_credentials flow) to store files
  * in the CTAMI-Automations@philips.com OneDrive.
  *
  * Falls back to local disk storage if OneDrive credentials are not configured
@@ -22,9 +22,9 @@ async function getOneDriveToken(): Promise<string> {
     return cachedOneDriveToken.value;
   }
 
-  const tenantId = env.OUTLOOK_TENANT_ID;
-  const clientId = env.OUTLOOK_CLIENT_ID;
-  const clientSecret = env.OUTLOOK_CLIENT_SECRET;
+  const tenantId = env.AZURE_AD_TENANT_ID;
+  const clientId = env.AZURE_AD_CLIENT_ID;
+  const clientSecret = env.AZURE_AD_CLIENT_SECRET;
 
   if (!tenantId || !clientId || !clientSecret) {
     throw new Error("OneDrive credentials not configured");
@@ -64,7 +64,7 @@ const ONEDRIVE_USER = env.OUTLOOK_ORGANIZER_EMAIL ?? "CTAMI-Automations@philips.
 const ROOT_FOLDER = "AuditTool";
 
 function isOneDriveConfigured(): boolean {
-  return !!(env.OUTLOOK_CLIENT_ID && env.OUTLOOK_CLIENT_SECRET && env.OUTLOOK_TENANT_ID);
+  return !!(env.AZURE_AD_CLIENT_ID && env.AZURE_AD_CLIENT_SECRET && env.AZURE_AD_TENANT_ID);
 }
 
 /**

@@ -5,9 +5,9 @@ import { env } from "@/env";
 let cachedToken: { value: string; expiresAt: number } | null = null;
 
 async function getOutlookToken(): Promise<string> {
-  const clientId = env.OUTLOOK_CLIENT_ID;
-  const clientSecret = env.OUTLOOK_CLIENT_SECRET;
-  const tenantId = env.OUTLOOK_TENANT_ID;
+  const clientId = env.AZURE_AD_CLIENT_ID;
+  const clientSecret = env.AZURE_AD_CLIENT_SECRET;
+  const tenantId = env.AZURE_AD_TENANT_ID;
 
   if (!clientId || !clientSecret || !tenantId) {
     throw new Error("Outlook calendar credentials not configured");
