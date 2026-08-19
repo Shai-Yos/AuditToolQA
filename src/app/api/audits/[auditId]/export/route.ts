@@ -11,11 +11,11 @@ import {
   readLocalFile,
 } from "@/server/lib/oneDriveClient";
 
-/** Format a Date to a readable string: DD/MM/YYYY HH:MM */
+/** Format a Date to a readable UTC string: DD/MM/YYYY HH:MM UTC */
 function fmtDate(d: Date | null | undefined): string {
   if (!d) return "";
   const pad = (n: number) => String(n).padStart(2, "0");
-  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return `${pad(d.getUTCDate())}/${pad(d.getUTCMonth() + 1)}/${d.getUTCFullYear()} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())} UTC`;
 }
 
 /** Convert HTML rich text to readable plain text for Excel */

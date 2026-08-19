@@ -3,7 +3,7 @@ import { join } from "path";
 import { existsSync } from "fs";
 import { db } from "@/server/db";
 import { requireUser } from "@/server/helpers/currentUser";
-import { canAccessTranscription, canAccessComm, roleForChannel } from "@/server/lib/roomRoles";
+import { buildUserRolesFromJson, canAccessTranscription, canAccessComm, roleForChannel } from "@/server/lib/roomRoles";
 import { createNotifications } from "@/server/helpers/notifications";
 import { getCachedAuditPrivilege } from "@/server/lib/userPrivilegeCache";
 import { uploadFile } from "@/server/lib/oneDriveClient";
@@ -90,9 +90,14 @@ export async function POST(
     }
   }
 
-  // Determine role label
-  const authorRole: string | null =
-    (user.role === "ADMIN" || isAuditOwnerOfThis) ? "Admin" : roleForChannel(privilege.assignee!.role, channel);
+  const effectiveRole = privilege.roomRolesJson
+    ? buildUserRolesFromJson(privilege.roomRolesJson).get(user.id) ?? privilege.assignee?.role ?? ""
+    : privilege.assignee?.role ?? "";
+
+  // Determine role label from user's role in this audit
+  const authorRole: string | null = effectiveRole
+    ? roleForChannel(effectiveRole, channel)
+    : null;
 
   // Save file — OneDrive: /AuditTool/Audits/[Audit name]/Chat/[file]
   // Local fallback: public/uploads/[auditSlug]/chats/[channelSlug]/[file]

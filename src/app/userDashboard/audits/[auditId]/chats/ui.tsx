@@ -70,16 +70,17 @@ function MessageAvatarImg({ src, name }: { src: string; name: string }) {
 /** Returns "Today", "Yesterday", or formatted date */
 function dayLabel(iso: string): string {
   const d = new Date(iso);
+  const dKey = d.toISOString().slice(0, 10);
   const today = new Date();
-  const yesterday = new Date();
-  yesterday.setDate(today.getDate() - 1);
-  if (d.toDateString() === today.toDateString()) return "Today";
-  if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
-  return d.toLocaleString(undefined, { month: "short", day: "numeric" });
+  const todayKey = today.toISOString().slice(0, 10);
+  const yesterdayKey = new Date(today.getTime() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  if (dKey === todayKey) return "Today";
+  if (dKey === yesterdayKey) return "Yesterday";
+  return `${d.toLocaleString(undefined, { month: "short", day: "numeric", timeZone: "UTC" })} UTC`;
 }
 
 function isSameDay(a: string, b: string) {
-  return new Date(a).toDateString() === new Date(b).toDateString();
+  return new Date(a).toISOString().slice(0, 10) === new Date(b).toISOString().slice(0, 10);
 }
 
 function formatBytes(bytes: number) {
@@ -397,6 +398,7 @@ export default function ChatsUI({
                         initialMessages={chatChannels[ch] ?? []}
                         composerPlaceholder="Enter transcription…"
                         currentUserName={currentUser.name}
+                        allowTranscriptionExport={currentUser.isAdmin}
                         rightPanel
                         readOnly={!canTranscribe}
                         roomUsers={roomUsers}
@@ -501,6 +503,7 @@ export function ChatPanel({
   initialMessages,
   composerPlaceholder,
   currentUserName,
+  allowTranscriptionExport,
   rightPanel,
   readOnly,
   frIndex,
@@ -516,6 +519,7 @@ export function ChatPanel({
   initialMessages: Message[];
   composerPlaceholder: string;
   currentUserName: string;
+  allowTranscriptionExport?: boolean;
   rightPanel?: boolean;
   readOnly?: boolean;
   frIndex?: number;
@@ -549,8 +553,16 @@ export function ChatPanel({
   const [unreadCount, setUnreadCount] = useState(0);
   const [isAtBottom, setIsAtBottom] = useState(true);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
+  const [exportingTranscription, setExportingTranscription] = useState(false);
+  const [exportStatusText, setExportStatusText] = useState<string | null>(null);
   const [typingNames, setTypingNames] = useState<string[]>([]);
   const [replyingTo, setReplyingTo] = useState<{ id: string; authorName: string; text: string } | null>(null);
+
+  useEffect(() => {
+    if (!exportStatusText) return;
+    const id = setTimeout(() => setExportStatusText(null), 4000);
+    return () => clearTimeout(id);
+  }, [exportStatusText]);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const transcriptionScrollRef = useRef<HTMLDivElement>(null);
@@ -593,6 +605,37 @@ export function ChatPanel({
       setTypingNames(names);
     } catch { /* ignore */ }
   }, [auditId, channel, readOnly, rightPanel]);
+
+  const exportNow = useCallback(async () => {
+    if (!rightPanel || exportingTranscription) return;
+    setExportingTranscription(true);
+    setExportStatusText(null);
+    try {
+      const res = await fetch(`/api/audits/${auditId}/transcription/export`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ channel, force: true }),
+      });
+      const payload = (await res.json().catch(() => ({}))) as {
+        status?: string;
+        fileName?: string;
+        error?: string;
+      };
+      if (!res.ok) {
+        setExportStatusText(payload.error ?? "Export failed");
+      } else if (payload.status === "exported") {
+        setExportStatusText(`Exported (${payload.fileName ?? "snapshot"})`);
+      } else if (payload.status === "skipped") {
+        setExportStatusText("No content to export");
+      } else {
+        setExportStatusText("Export finished");
+      }
+    } catch {
+      setExportStatusText("Export failed");
+    } finally {
+      setExportingTranscription(false);
+    }
+  }, [rightPanel, exportingTranscription, auditId, channel]);
 
   // Keep a ref to the latest text so the interval always reads the current value
   const textRef = useRef(text);
@@ -1021,12 +1064,13 @@ export function ChatPanel({
   };
 
   const timeLabel = (iso: string) =>
-    new Date(iso).toLocaleString(undefined, {
+    `${new Date(iso).toLocaleString(undefined, {
       month: "short",
       day: "numeric",
       hour: "2-digit",
       minute: "2-digit",
-    });
+      timeZone: "UTC",
+    })} UTC`;
 
   const charsLeft = MAX_CHARS - text.length;
   const overLimit = charsLeft < 0;
@@ -1077,6 +1121,17 @@ export function ChatPanel({
           <span className={`hidden sm:inline rounded-full border px-3 py-1 text-xs lg:text-sm font-semibold shadow-sm ${rightPanel ? "border-amber-200 bg-amber-50 text-amber-700" : "border-blue-200 bg-blue-50 text-blue-700"}`}>
             {rightPanel ? "Transcription" : "Chat"}
           </span>
+          {rightPanel && allowTranscriptionExport && (
+            <button
+              type="button"
+              onClick={() => void exportNow()}
+              disabled={exportingTranscription}
+              className="rounded-full border border-amber-300 bg-amber-100 px-3 py-1 text-[11px] font-semibold text-amber-900 shadow-sm transition hover:bg-amber-200 disabled:cursor-not-allowed disabled:opacity-60"
+              title="Create a timestamped transcription snapshot"
+            >
+              {exportingTranscription ? "Exporting..." : "Export Now"}
+            </button>
+          )}
           {onPopOut && !popout && (
             <button
               type="button"
@@ -1092,6 +1147,11 @@ export function ChatPanel({
           )}
         </div>
       </div>
+      {rightPanel && exportStatusText && (
+        <div className="border-b border-amber-100 bg-amber-50/40 px-5 py-1.5 text-[11px] text-amber-700">
+          {exportStatusText}
+        </div>
+      )}
 
       {/* Messages area */}
       <div className={popout ? "relative flex flex-col flex-1 min-h-0" : "relative flex-1 min-h-0 flex flex-col"}>

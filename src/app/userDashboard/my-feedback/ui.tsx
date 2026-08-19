@@ -170,9 +170,9 @@ export function MyFeedbackUI({ feedbacks, currentUserId, currentUserName, curren
                     <div className="flex flex-col">
                       <span className="text-sm font-medium text-slate-700">{currentUserName}</span>
                       <span className="text-xs text-slate-400">
-                        {new Date(f.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}{" "}
+                        {new Date(f.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })}{" UTC "}
                         at{" "}
-                        {new Date(f.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: true })}
+                        {new Date(f.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: true, timeZone: "UTC" })} UTC
                       </span>
                     </div>
                   </div>
@@ -243,12 +243,14 @@ export function MyFeedbackUI({ feedbacks, currentUserId, currentUserName, curren
                             {new Date(c.createdAt).toLocaleDateString(undefined, {
                               month: "short",
                               day: "numeric",
-                            })}{" "}
+                              timeZone: "UTC",
+                            })}{" UTC "}
                             {new Date(c.createdAt).toLocaleTimeString([], {
                               hour: "2-digit",
                               minute: "2-digit",
                               hour12: true,
-                            })}
+                              timeZone: "UTC",
+                            })} UTC
                           </span>
                         </div>
                         <p className="mt-1 text-sm text-slate-700 whitespace-pre-wrap">

@@ -934,8 +934,8 @@ function AuditProgress({
         />
       </div>
       <div className="mt-2 flex justify-between text-[11px] font-medium text-slate-500 dark:text-slate-400">
-        <span>{new Date(startDate).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</span>
-        <span>{new Date(endDate).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</span>
+        <span>{new Date(startDate).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" })} UTC</span>
+        <span>{new Date(endDate).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" })} UTC</span>
       </div>
     </div>
   );
@@ -1395,12 +1395,13 @@ export default function AuditDashboardUI({ audit, isAdmin = false, canCreateRequ
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
+    timeZone: "UTC",
   };
   const startLabel = audit.startDate
-    ? new Date(audit.startDate).toLocaleDateString("en-GB", fmtOpts)
+    ? `${new Date(audit.startDate).toLocaleDateString("en-GB", fmtOpts)} UTC`
     : "—";
   const endLabel = audit.endDate
-    ? new Date(audit.endDate).toLocaleDateString("en-GB", fmtOpts)
+    ? `${new Date(audit.endDate).toLocaleDateString("en-GB", fmtOpts)} UTC`
     : "Present";
   const dateRange =
     audit.startDate && audit.endDate && audit.startDate === audit.endDate

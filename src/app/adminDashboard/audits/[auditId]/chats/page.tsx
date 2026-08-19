@@ -64,11 +64,9 @@ export default async function Page({
   for (const m of allMessages) {
     const liveUser = userMap.get(m.authorId);
     const liveAssignee = assigneeMap.get(m.authorId);
-    const liveRole = liveUser?.role === "ADMIN"
-      ? "Admin"
-      : liveAssignee
-          ? roleForChannel(liveAssignee.role, m.channel)
-          : m.authorRole;
+    const liveRole = liveAssignee
+      ? roleForChannel(liveAssignee.role, m.channel)
+      : m.authorRole;
     chatChannels[m.channel]?.push({
       id: m.id,
       authorName: liveUser?.name ?? m.authorName,

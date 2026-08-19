@@ -89,12 +89,12 @@ function avatarColor(seed: string) {
 }
 
 function formatRequestDate(isoDate: string) {
-  return new Date(isoDate).toLocaleDateString("en-US", {
+  return `${new Date(isoDate).toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
     year: "numeric",
     timeZone: "UTC",
-  });
+  })} UTC`;
 }
 
 function ReviewModal({

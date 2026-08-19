@@ -69,6 +69,7 @@ export default async function Page({
           createdAt: r.createdAt.toISOString(),
           documentsCount: r.documents.length,
           commentsCount: r._count.comments,
+          creatorId: r.createdById ?? null,
           creatorName: r.createdBy?.name ?? r.createdBy?.email ?? null,
           creatorImage: r.createdBy?.image ?? null,
           estimatedDeliveryDate: r.estimatedDeliveryDate ? r.estimatedDeliveryDate.toISOString().split("T")[0]! : null,

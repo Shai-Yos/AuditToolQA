@@ -420,12 +420,12 @@ export default function AllRequestsOwnerClient({
 
                       {/* Created */}
                       <td className="whitespace-nowrap px-5 py-4 text-xs text-slate-500">
-                        {new Date(r.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
+                        {new Date(r.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })} UTC
                       </td>
 
                       {/* Open */}
                       <td className="whitespace-nowrap px-5 py-4 text-xs font-medium text-slate-500">
-                        <span className="inline-flex items-center gap-1.5" title={r.closedAt ? `Closed ${new Date(r.closedAt).toLocaleString()}` : "Open"}>
+                        <span className="inline-flex items-center gap-1.5" title={r.closedAt ? `Closed ${new Date(r.closedAt).toLocaleString(undefined, { timeZone: "UTC" })} UTC` : "Open"}>
                           <span className={`h-1.5 w-1.5 rounded-full ${r.closedAt ? "bg-slate-300" : "bg-green-500"}`} aria-hidden="true" />
                           {timeOpen(r.createdAt, r.closedAt)}
                         </span>

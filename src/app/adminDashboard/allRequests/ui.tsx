@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTheme } from "@/components/ThemeProvider";
@@ -37,6 +37,7 @@ type RequestRow = {
   auditStatus: string;
   createdById: string | null;
   assigneeIds: string[];
+  estimatedDeliveryDate: string | null;
 };
 
 type SortKey =
@@ -108,21 +109,38 @@ export default function AllRequestsClient({
   const [query, setQuery] = useState("");
   const [activeStatus, setActiveStatus] = useState<string>("All");
   const [auditScope, setAuditScope] = useState<"active" | "all">("active");
-  const [activeAuditIds, setActiveAuditIds] = useState<string[]>([]);
+  const [selectedAuditIds, setSelectedAuditIds] = useState<string[]>([]);
   const [filterAssigned, setFilterAssigned] = useState(false);
   const [filterCreated, setFilterCreated] = useState(false);
+  const [labelFilter, setLabelFilter] = useState<string>("All");
+  const [creatorFilter, setCreatorFilter] = useState<string>("All");
+  const [etaFilter, setEtaFilter] = useState<"All" | "withEta" | "withoutEta">("All");
   const [sortKey, setSortKey] = useState<SortKey>("created");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
 
-  // Requests and audits scoped to the selected audit category
-  const scopedRequests = useMemo(
-    () => auditScope === "active" ? requests.filter((r) => r.auditStatus === "ACTIVE") : requests,
+  // Requests and audits scoped by Audit header filter
+  const scopeRequests = useMemo(
+    () => (auditScope === "active" ? requests.filter((r) => r.auditStatus === "ACTIVE") : requests),
     [requests, auditScope],
   );
+
   const scopedAudits = useMemo(
-    () => auditScope === "active" ? audits.filter((a) => a.status === "ACTIVE") : audits,
+    () => (auditScope === "active" ? audits.filter((a) => a.status === "ACTIVE") : audits),
     [audits, auditScope],
   );
+
+  const scopedRequests = useMemo(
+    () =>
+      selectedAuditIds.length === 0
+        ? scopeRequests
+        : scopeRequests.filter((r) => selectedAuditIds.includes(r.auditId)),
+    [scopeRequests, selectedAuditIds],
+  );
+
+  useEffect(() => {
+    const allowed = new Set(scopedAudits.map((a) => a.id));
+    setSelectedAuditIds((prev) => prev.filter((id) => allowed.has(id)));
+  }, [scopedAudits]);
 
   // Status counts derived from scoped requests (colors from server statusMap)
   const scopedStatusMap = useMemo(() => {
@@ -151,22 +169,67 @@ export default function AllRequestsClient({
     [scopedStatusMap],
   );
 
+  const labelOptions = useMemo(() => {
+    const unique = new Set<string>();
+    for (const r of scopedRequests) {
+      for (const l of r.labels) unique.add(l);
+    }
+    return [
+      { value: "All", label: "All labels" },
+      ...Array.from(unique)
+        .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }))
+        .map((label) => ({ value: label, label })),
+    ];
+  }, [scopedRequests]);
+
+  const creatorOptions = useMemo(() => {
+    const unique = new Set<string>();
+    for (const r of scopedRequests) {
+      if (r.createdByName) unique.add(r.createdByName);
+    }
+    return [
+      { value: "All", label: "All creators" },
+      ...Array.from(unique)
+        .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }))
+        .map((name) => ({ value: name, label: name })),
+    ];
+  }, [scopedRequests]);
+
+  const statusFilterOptions = useMemo(
+    () => [
+      { value: "All", label: "All statuses" },
+      ...statusEntries.map(([status]) => ({ value: status, label: status })),
+    ],
+    [statusEntries],
+  );
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     const rows = scopedRequests.filter((r) => {
+      const requestType = r.isFormal ? "formal" : "informal";
+      const matchesType = requestType.startsWith(q);
       const matchStatus = activeStatus === "All" || r.statusName === activeStatus;
-      const matchAudit = activeAuditIds.length === 0 || activeAuditIds.includes(r.auditId);
+      const matchLabel =
+        labelFilter === "All" ||
+        r.labels.some((l) => l.localeCompare(labelFilter, undefined, { sensitivity: "base" }) === 0);
+      const matchCreator =
+        creatorFilter === "All" ||
+        r.createdByName.localeCompare(creatorFilter, undefined, { sensitivity: "base" }) === 0;
+      const matchEta =
+        etaFilter === "All" ||
+        (etaFilter === "withEta" ? !!r.estimatedDeliveryDate : !r.estimatedDeliveryDate);
       const matchQuery =
         !q ||
         (r.trackNumber ?? r.title).toLowerCase().includes(q) ||
         r.auditTitle.toLowerCase().includes(q) ||
         r.labels.some((l) => l.toLowerCase().includes(q)) ||
+        matchesType ||
         r.createdByName.toLowerCase().includes(q);
       const matchMine =
         (!filterAssigned && !filterCreated) ||
         (filterAssigned && r.assigneeIds.includes(currentUserId)) ||
         (filterCreated && r.createdById === currentUserId);
-      return matchStatus && matchAudit && matchQuery && matchMine;
+      return matchStatus && matchLabel && matchCreator && matchEta && matchQuery && matchMine;
     });
     const now = Date.now();
     const dir = sortDir === "asc" ? 1 : -1;
@@ -177,7 +240,19 @@ export default function AllRequestsClient({
       if (va > vb) return 1 * dir;
       return 0;
     });
-  }, [scopedRequests, query, activeStatus, activeAuditIds, filterAssigned, filterCreated, currentUserId, sortKey, sortDir]);
+  }, [
+    scopedRequests,
+    query,
+    activeStatus,
+    labelFilter,
+    creatorFilter,
+    etaFilter,
+    filterAssigned,
+    filterCreated,
+    currentUserId,
+    sortKey,
+    sortDir,
+  ]);
 
   return (
     <div className="relative min-h-screen bg-slate-50">
@@ -203,40 +278,6 @@ export default function AllRequestsClient({
               ← Back
             </button>
           </div>
-        </div>
-
-        {/* Scope toggle */}
-        <div className="mb-6 flex items-center gap-3">
-          <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Show:</span>
-          <div className="flex rounded-lg border border-slate-200 bg-white p-0.5 shadow-sm">
-            <button
-              type="button"
-              onClick={() => { setAuditScope("active"); setActiveAuditIds([]); setActiveStatus("All"); }}
-              className={`rounded-md px-4 py-1.5 text-xs font-semibold transition ${
-                auditScope === "active"
-                  ? "bg-slate-900 text-white shadow-sm"
-                  : "text-slate-600 hover:text-slate-900"
-              }`}
-            >
-              Active Audits
-            </button>
-            <button
-              type="button"
-              onClick={() => { setAuditScope("all"); setActiveAuditIds([]); setActiveStatus("All"); }}
-              className={`rounded-md px-4 py-1.5 text-xs font-semibold transition ${
-                auditScope === "all"
-                  ? "bg-slate-900 text-white shadow-sm"
-                  : "text-slate-600 hover:text-slate-900"
-              }`}
-            >
-              All Audits
-            </button>
-          </div>
-          {auditScope === "all" && (
-            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
-              Includes draft
-            </span>
-          )}
         </div>
 
         {/* Status summary cards */}
@@ -293,17 +334,6 @@ export default function AllRequestsClient({
             </button>
           ))}
         </div>
-
-        {/* Audit filter dropdown */}
-        {scopedAudits.length > 0 && (
-          <div className="mb-5">
-            <AuditFilterDropdown
-              audits={scopedAudits}
-              selected={activeAuditIds}
-              onChange={setActiveAuditIds}
-            />
-          </div>
-        )}
 
         {/* Search */}
         <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -378,12 +408,82 @@ export default function AllRequestsClient({
               <thead className="sticky top-0 z-10 bg-slate-50">
                 <tr>
                   <SortableTh label="Track #" sortKey="track" current={sortKey} dir={sortDir} onClick={toggleSort} />
-                  <SortableTh label="Audit" sortKey="audit" current={sortKey} dir={sortDir} onClick={toggleSort} />
-                  <SortableTh label="Status" sortKey="status" current={sortKey} dir={sortDir} onClick={toggleSort} />
-                  <SortableTh label="Labels" sortKey="labels" current={sortKey} dir={sortDir} onClick={toggleSort} />
-                  <SortableTh label="Created By" sortKey="createdBy" current={sortKey} dir={sortDir} onClick={toggleSort} />
+                  <SortableTh
+                    label="Audit"
+                    sortKey="audit"
+                    current={sortKey}
+                    dir={sortDir}
+                    onClick={toggleSort}
+                    filter={
+                      <AuditColumnFilterDropdown
+                        scope={auditScope}
+                        onScopeChange={setAuditScope}
+                        selected={selectedAuditIds}
+                        onSelectedChange={setSelectedAuditIds}
+                        audits={scopedAudits
+                          .slice()
+                          .sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: "base" }))}
+                      />
+                    }
+                  />
+                  <SortableTh
+                    label="Status"
+                    sortKey="status"
+                    current={sortKey}
+                    dir={sortDir}
+                    onClick={toggleSort}
+                    filter={
+                      <ColumnFilterDropdown<string>
+                        value={activeStatus}
+                        onChange={setActiveStatus}
+                        options={statusFilterOptions}
+                      />
+                    }
+                  />
+                  <SortableTh
+                    label="Labels"
+                    sortKey="labels"
+                    current={sortKey}
+                    dir={sortDir}
+                    onClick={toggleSort}
+                    filter={
+                      <ColumnFilterDropdown<string>
+                        value={labelFilter}
+                        onChange={setLabelFilter}
+                        options={labelOptions}
+                      />
+                    }
+                  />
+                  <SortableTh
+                    label="Created By"
+                    sortKey="createdBy"
+                    current={sortKey}
+                    dir={sortDir}
+                    onClick={toggleSort}
+                    filter={
+                      <ColumnFilterDropdown<string>
+                        value={creatorFilter}
+                        onChange={setCreatorFilter}
+                        options={creatorOptions}
+                      />
+                    }
+                  />
                   <SortableTh label="Created" sortKey="created" current={sortKey} dir={sortDir} onClick={toggleSort} />
                   <SortableTh label="Open" sortKey="open" current={sortKey} dir={sortDir} onClick={toggleSort} />
+                  <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <span className="inline-flex items-center gap-1">
+                      ETA
+                      <ColumnFilterDropdown<"All" | "withEta" | "withoutEta">
+                        value={etaFilter}
+                        onChange={setEtaFilter}
+                        options={[
+                          { value: "All", label: "All ETA" },
+                          { value: "withEta", label: "With ETA" },
+                          { value: "withoutEta", label: "Without ETA" },
+                        ]}
+                      />
+                    </span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -471,19 +571,30 @@ export default function AllRequestsClient({
 
                     {/* Created */}
                     <td className="whitespace-nowrap px-5 py-4 text-xs text-slate-500">
-                      {new Date(r.createdAt).toLocaleDateString(undefined, {
+                      <div>{new Date(r.createdAt).toLocaleDateString(undefined, {
                         month: "short",
                         day: "numeric",
                         year: "numeric",
-                      })}
+                        timeZone: "UTC",
+                      })} UTC</div>
+                      <div className="text-[11px] text-slate-400">{new Date(r.createdAt).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", timeZone: "UTC" })} UTC</div>
                     </td>
 
                     {/* Open */}
                     <td className="whitespace-nowrap px-5 py-4 text-xs font-medium text-slate-500">
-                      <span className="inline-flex items-center gap-1.5" title={r.closedAt ? `Closed ${new Date(r.closedAt).toLocaleString()}` : "Open"}>
+                      <span className="inline-flex items-center gap-1.5" title={r.closedAt ? `Closed ${new Date(r.closedAt).toLocaleString(undefined, { timeZone: "UTC" })} UTC` : "Open"}>
                         <span className={`h-1.5 w-1.5 rounded-full ${r.closedAt ? "bg-slate-300" : "bg-green-500"}`} aria-hidden="true" />
                         {timeOpen(r.createdAt, r.closedAt)}
                       </span>
+                    </td>
+
+                    {/* ETA */}
+                    <td className="whitespace-nowrap px-5 py-4 text-xs text-slate-500">
+                      {r.estimatedDeliveryDate ? (
+                        `${new Date(r.estimatedDeliveryDate + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })} UTC`
+                      ) : (
+                        <span className="text-slate-300">—</span>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -497,127 +608,281 @@ export default function AllRequestsClient({
   );
 }
 
-function SortableTh({
-  label,
-  sortKey,
-  current,
-  dir,
-  onClick,
-}: {
-  label: string;
-  sortKey: SortKey;
-  current: SortKey;
-  dir: SortDir;
-  onClick: (key: SortKey) => void;
-}) {
-  const active = current === sortKey;
-  const indicator = active ? (dir === "asc" ? "▲" : "▼") : "↕";
-  return (
-    <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-      <button
-        type="button"
-        onClick={() => onClick(sortKey)}
-        className={`inline-flex items-center gap-1 transition hover:text-slate-900 ${active ? "text-slate-900" : ""}`}
-      >
-        <span>{label}</span>
-        <span className={`text-[10px] ${active ? "opacity-100" : "opacity-40"}`} aria-hidden="true">
-          {indicator}
-        </span>
-      </button>
-    </th>
-  );
-}
-
-function AuditFilterDropdown({
-  audits,
-  selected,
+function ColumnFilterDropdown<T extends string>({
+  value,
   onChange,
+  options,
 }: {
-  audits: { id: string; title: string }[];
-  selected: string[];
-  onChange: (ids: string[]) => void;
+  value: T;
+  onChange: (v: T) => void;
+  options: { value: T; label: string }[];
 }) {
   const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState({ top: 0, left: 0 });
+  const btnRef = useRef<HTMLButtonElement>(null);
   const ref = useRef<HTMLDivElement>(null);
+  const active = value !== (options[0]?.value ?? "");
 
   useEffect(() => {
-    const handler = (e: MouseEvent) => {
+    function handleClickOutside(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const toggle = (id: string) =>
-    onChange(selected.includes(id) ? selected.filter((x) => x !== id) : [...selected, id]);
-
-  const label =
-    selected.length === 0 ? "All Audits" :
-    selected.length === 1 ? (audits.find((a) => a.id === selected[0])?.title ?? "1 audit") :
-    `${selected.length} audits selected`;
+  function toggle(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect();
+      setPos({ top: r.bottom + 4, left: r.left });
+    }
+    setOpen((v) => !v);
+  }
 
   return (
-    <div className="relative" ref={ref}>
+    <div ref={ref} className="relative inline-block">
       <button
+        ref={btnRef}
         type="button"
-        onClick={() => setOpen((v) => !v)}
-        className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium shadow-sm transition focus:outline-none focus:ring-4 focus:ring-blue-100 ${
-          selected.length > 0
-            ? "border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100"
-            : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-        }`}
+        onClick={toggle}
+        className={[
+          "rounded p-0.5 transition",
+          active ? "text-blue-600" : "text-slate-400 hover:text-slate-700",
+        ].join(" ")}
+        title="Filter"
       >
-        <svg className="h-3.5 w-3.5 shrink-0 text-current opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707L13 13.414V19a1 1 0 01-.553.894l-4 2A1 1 0 017 21v-7.586L3.293 6.707A1 1 0 013 6V4z" />
-        </svg>
-        <span className="max-w-[220px] truncate">{label}</span>
-        <svg
-          className={`h-4 w-4 shrink-0 transition-transform ${open ? "rotate-180" : ""} ${selected.length > 0 ? "text-blue-500" : "text-slate-400"}`}
-          fill="none" viewBox="0 0 24 24" stroke="currentColor"
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        <svg className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
+          <path fillRule="evenodd" d="M2.628 1.601C5.028 1.206 7.49 1 10 1s4.973.206 7.372.601a.75.75 0 01.628.74v2.288a2.25 2.25 0 01-.659 1.59l-4.682 4.683a2.25 2.25 0 00-.659 1.59v3.037c0 .684-.31 1.33-.844 1.757l-1.937 1.55A.75.75 0 018 18.25v-5.757a2.25 2.25 0 00-.659-1.591L2.659 6.22A2.25 2.25 0 012 4.629V2.34a.75.75 0 01.628-.74z" clipRule="evenodd" />
         </svg>
       </button>
       {open && (
-        <div className="absolute left-0 top-full z-20 mt-1.5 w-72 rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg">
-          <ul className="max-h-64 overflow-y-auto">
-            {audits.map((a) => (
-              <li key={a.id}>
-                <button
-                  type="button"
-                  onClick={() => toggle(a.id)}
-                  className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition ${
-                    selected.includes(a.id) ? "bg-blue-50 text-blue-700" : "text-slate-700 hover:bg-slate-50"
-                  }`}
-                >
-                  <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition ${
-                    selected.includes(a.id) ? "border-blue-500 bg-blue-500" : "border-slate-300 bg-white"
-                  }`}>
-                    {selected.includes(a.id) && (
-                      <svg className="h-2.5 w-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                      </svg>
-                    )}
-                  </span>
-                  <span className="flex-1 truncate">{a.title}</span>
-                </button>
+        <div
+          className="fixed z-50 min-w-[130px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg ring-1 ring-black/5"
+          style={{ top: pos.top, left: pos.left }}
+        >
+          <ul className="max-h-64 overflow-y-auto p-1">
+            {options.map((o) => (
+              <li
+                key={o.value}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onChange(o.value);
+                  setOpen(false);
+                }}
+                className={[
+                  "flex cursor-pointer items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium transition",
+                  value === o.value ? "bg-slate-100 text-slate-900" : "text-slate-600 hover:bg-slate-50",
+                ].join(" ")}
+              >
+                {value === o.value ? (
+                  <svg className="h-3 w-3 shrink-0 text-blue-600" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clipRule="evenodd" />
+                  </svg>
+                ) : (
+                  <span className="h-3 w-3 shrink-0" />
+                )}
+                <span className="max-w-[280px] truncate">{o.label}</span>
               </li>
             ))}
           </ul>
-          {selected.length > 0 && (
-            <>
-              <div className="my-1 border-t border-slate-100" />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AuditColumnFilterDropdown({
+  scope,
+  onScopeChange,
+  selected,
+  onSelectedChange,
+  audits,
+}: {
+  scope: "active" | "all";
+  onScopeChange: (scope: "active" | "all") => void;
+  selected: string[];
+  onSelectedChange: (ids: string[]) => void;
+  audits: { id: string; title: string; status: string }[];
+}) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState({ top: 0, left: 0 });
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const ref = useRef<HTMLDivElement>(null);
+  const active = scope !== "active" || selected.length > 0;
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  function toggleMenu(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect();
+      setPos({ top: r.bottom + 4, left: r.left });
+    }
+    setOpen((v) => !v);
+  }
+
+  function toggleAudit(id: string) {
+    onSelectedChange(selected.includes(id) ? selected.filter((x) => x !== id) : [...selected, id]);
+  }
+
+  function clearAll() {
+    onScopeChange("active");
+    onSelectedChange([]);
+  }
+
+  return (
+    <div ref={ref} className="relative inline-block">
+      <button
+        ref={btnRef}
+        type="button"
+        onClick={toggleMenu}
+        className={[
+          "rounded p-0.5 transition",
+          active ? "text-blue-600" : "text-slate-400 hover:text-slate-700",
+        ].join(" ")}
+        title="Filter"
+      >
+        <svg className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
+          <path fillRule="evenodd" d="M2.628 1.601C5.028 1.206 7.49 1 10 1s4.973.206 7.372.601a.75.75 0 01.628.74v2.288a2.25 2.25 0 01-.659 1.59l-4.682 4.683a2.25 2.25 0 00-.659 1.59v3.037c0 .684-.31 1.33-.844 1.757l-1.937 1.55A.75.75 0 018 18.25v-5.757a2.25 2.25 0 00-.659-1.591L2.659 6.22A2.25 2.25 0 012 4.629V2.34a.75.75 0 01.628-.74z" clipRule="evenodd" />
+        </svg>
+      </button>
+      {open && (
+        <div
+          className="fixed z-50 w-72 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg ring-1 ring-black/5"
+          style={{ top: pos.top, left: pos.left }}
+        >
+          <div className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+            Scope
+          </div>
+          <div className="px-1 pb-2">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onScopeChange("active");
+              }}
+              className={[
+                "mb-1 flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium transition",
+                scope === "active" ? "bg-slate-100 text-slate-900" : "text-slate-600 hover:bg-slate-50",
+              ].join(" ")}
+            >
+              <span className={["h-2 w-2 rounded-full", scope === "active" ? "bg-blue-600" : "bg-slate-300"].join(" ")} />
+              All active audits
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onScopeChange("all");
+              }}
+              className={[
+                "flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium transition",
+                scope === "all" ? "bg-slate-100 text-slate-900" : "text-slate-600 hover:bg-slate-50",
+              ].join(" ")}
+            >
+              <span className={["h-2 w-2 rounded-full", scope === "all" ? "bg-blue-600" : "bg-slate-300"].join(" ")} />
+              All audits
+            </button>
+          </div>
+
+          <div className="border-t border-slate-100 px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+            Audits
+          </div>
+          <ul className="max-h-60 overflow-y-auto p-1">
+            {audits.map((a) => {
+              const checked = selected.includes(a.id);
+              return (
+                <li key={a.id}>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleAudit(a.id);
+                    }}
+                    className={[
+                      "flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium transition",
+                      checked ? "bg-slate-100 text-slate-900" : "text-slate-600 hover:bg-slate-50",
+                    ].join(" ")}
+                  >
+                    <span
+                      className={[
+                        "flex h-3.5 w-3.5 items-center justify-center rounded border",
+                        checked ? "border-blue-500 bg-blue-500" : "border-slate-300 bg-white",
+                      ].join(" ")}
+                    >
+                      {checked && (
+                        <svg className="h-2.5 w-2.5 text-white" viewBox="0 0 20 20" fill="currentColor">
+                          <path fillRule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clipRule="evenodd" />
+                        </svg>
+                      )}
+                    </span>
+                    <span className="truncate">{a.title}</span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+
+          {(scope !== "active" || selected.length > 0) && (
+            <div className="border-t border-slate-100 p-1">
               <button
                 type="button"
-                onClick={() => { onChange([]); setOpen(false); }}
-                className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-slate-500 hover:bg-slate-50"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  clearAll();
+                }}
+                className="flex w-full items-center rounded-lg px-3 py-1.5 text-xs font-medium text-slate-500 transition hover:bg-slate-50"
               >
-                Clear selection
+                Reset audit filter
               </button>
-            </>
+            </div>
           )}
         </div>
       )}
     </div>
   );
 }
+
+function SortableTh({
+  label,
+  sortKey,
+  current,
+  dir,
+  onClick,
+  filter,
+}: {
+  label: string;
+  sortKey: SortKey;
+  current: SortKey;
+  dir: SortDir;
+  onClick: (key: SortKey) => void;
+  filter?: ReactNode;
+}) {
+  const active = current === sortKey;
+  const indicator = active ? (dir === "asc" ? "▲" : "▼") : "↕";
+  return (
+    <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+      <span className="inline-flex items-center gap-1">
+        <button
+          type="button"
+          onClick={() => onClick(sortKey)}
+          className={`inline-flex items-center gap-1 transition hover:text-slate-900 dark:hover:text-white ${active ? "text-slate-900 dark:text-white" : ""}`}
+        >
+          <span>{label}</span>
+          <span className={`text-[10px] ${active ? "opacity-100" : "opacity-40"}`} aria-hidden="true">
+            {indicator}
+          </span>
+        </button>
+        {filter}
+      </span>
+    </th>
+  );
+}
+

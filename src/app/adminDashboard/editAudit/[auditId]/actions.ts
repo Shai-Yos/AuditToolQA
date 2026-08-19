@@ -316,7 +316,7 @@ export async function updateAudit(
     if (oldAudit?.backRoomsCount !== backRoomsCount) changes.push(`Back Rooms: ${oldAudit?.backRoomsCount ?? 0} → ${backRoomsCount}`);
     const oldStart = oldAudit?.startAt?.toISOString().slice(0, 10) ?? "";
     const oldEnd = oldAudit?.endAt?.toISOString().slice(0, 10) ?? "";
-    const fmtDate = (s: string) => s ? new Date(s).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "none";
+    const fmtDate = (s: string) => s ? `${new Date(s).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })} UTC` : "none";
     if (fmtDate(oldStart) !== fmtDate(startAt || "")) changes.push(`Start: ${fmtDate(oldStart)} → ${fmtDate(startAt || "")}`);
     if (fmtDate(oldEnd) !== fmtDate(endAt || "")) changes.push(`End: ${fmtDate(oldEnd)} → ${fmtDate(endAt || "")}`);
 

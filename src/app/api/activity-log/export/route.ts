@@ -59,7 +59,7 @@ export async function GET(req: Request) {
     }
 
     return {
-      Date: log.createdAt.toLocaleString(),
+      Date: `${log.createdAt.toLocaleString(undefined, { timeZone: "UTC" })} UTC`,
       Action: TYPE_LABELS[log.action] ?? log.action,
       "Performed By": log.actorName,
       Target: log.targetTitle,

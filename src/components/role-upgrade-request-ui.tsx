@@ -64,7 +64,7 @@ export default function RoleUpgradeRequestUI({
           is under review.
         </p>
         <p className="mt-1 text-xs text-slate-400">
-          Submitted {new Date(existingRequest!.createdAt).toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" })}
+          Submitted {new Date(existingRequest!.createdAt).toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric", timeZone: "UTC" })} UTC
         </p>
         <div className="mt-6 rounded-xl border border-blue-100 bg-blue-50 dark:bg-blue-900/10 dark:border-blue-800/30 p-4 text-sm text-blue-700 dark:text-blue-300">
           An admin will review your request and update your role.

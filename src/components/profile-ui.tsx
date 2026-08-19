@@ -24,7 +24,8 @@ export default function ProfileUI({ user }: { user: ProfileUser }) {
     month: "long",
     day: "numeric",
     year: "numeric",
-  });
+    timeZone: "UTC",
+  }) + " UTC";
 
   const roleBadge =
     user.role === "ADMIN"

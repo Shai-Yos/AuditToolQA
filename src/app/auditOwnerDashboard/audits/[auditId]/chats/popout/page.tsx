@@ -61,12 +61,9 @@ export default async function AuditOwnerChatPopoutPage({
   const initialMessages = messages.map((m) => {
     const liveUser = userMap.get(m.authorId);
     const liveAssignee = assigneeMap.get(m.authorId);
-    const liveRole =
-      liveUser?.role === "ADMIN" || liveUser?.role === "AUDIT_OWNER"
-        ? "Admin"
-        : liveAssignee
-          ? roleForChannel(liveAssignee.role, channel)
-          : m.authorRole;
+    const liveRole = liveAssignee
+      ? roleForChannel(liveAssignee.role, channel)
+      : m.authorRole;
     return {
       id: m.id,
       authorName: liveUser?.name ?? m.authorName,

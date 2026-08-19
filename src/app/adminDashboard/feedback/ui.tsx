@@ -267,12 +267,14 @@ export function FeedbackListUI({ feedbacks, currentUserId, currentUserName, curr
                             month: "short",
                             day: "numeric",
                             year: "numeric",
-                          })}{" "}
+                            timeZone: "UTC",
+                          })}{" UTC "}
                           at{" "}
                           {new Date(f.createdAt).toLocaleTimeString([], {
                             hour: "2-digit",
                             minute: "2-digit",
-                          })}
+                            timeZone: "UTC",
+                          })} UTC
                         </p>
                       </div>
                     </div>
@@ -397,11 +399,13 @@ function FeedbackComments({
                   {new Date(c.createdAt).toLocaleDateString(undefined, {
                     month: "short",
                     day: "numeric",
-                  })}{" "}
+                    timeZone: "UTC",
+                  })}{" UTC "}
                   {new Date(c.createdAt).toLocaleTimeString([], {
                     hour: "2-digit",
                     minute: "2-digit",
-                  })}
+                    timeZone: "UTC",
+                  })} UTC
                 </span>
               </div>
               <p className="mt-1 text-sm text-slate-600 whitespace-pre-wrap">
