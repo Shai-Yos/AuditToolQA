@@ -86,7 +86,7 @@ export default function RequestAccessUI({ prefillEmail, prefillName, existingReq
           role is pending review by an administrator.
         </p>
         <p className="mt-2 text-sm text-slate-400">
-          Submitted on {new Date(existingRequest.createdAt).toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" })}
+          Submitted on {new Date(existingRequest.createdAt).toLocaleDateString("en-GB", { month: "long", day: "numeric", year: "numeric" })}
         </p>
         <div className="mt-8 rounded-xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-700">
           You will be able to log in once an admin approves your request.

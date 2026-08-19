@@ -9,6 +9,10 @@ function isLockFresh(lockedAt: Date | null): boolean {
   return Date.now() - lockedAt.getTime() < LOCK_TTL_MS;
 }
 
+function isPoolTimeoutError(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && (error as { code?: string }).code === "P2024";
+}
+
 // GET — check lock status without acquiring
 export async function GET(
   _req: NextRequest,
@@ -77,20 +81,29 @@ export async function PATCH(
   let user;
   try { user = await requireUser(); } catch { return NextResponse.json({ error: "Unauthorized" }, { status: 401 }); }
 
-  const request = await db.request.findUnique({
-    where: { id: requestId },
-    select: { lockedBy: true },
-  });
+  try {
+    // Single-query heartbeat to reduce connection pressure under heavy concurrency.
+    const result = await db.request.updateMany({
+      where: { id: requestId, lockedBy: user.id },
+      data: { lockedAt: new Date() },
+    });
 
-  if (!request) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  if (request.lockedBy !== user.id) return NextResponse.json({ error: "Not your lock" }, { status: 403 });
+    if (result.count > 0) {
+      return NextResponse.json({ ok: true });
+    }
 
-  await db.request.update({
-    where: { id: requestId },
-    data: { lockedAt: new Date() },
-  });
-
-  return NextResponse.json({ ok: true });
+    const request = await db.request.findUnique({
+      where: { id: requestId },
+      select: { id: true },
+    });
+    if (!request) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    return NextResponse.json({ error: "Not your lock" }, { status: 403 });
+  } catch (error) {
+    if (isPoolTimeoutError(error)) {
+      return NextResponse.json({ error: "Database busy, retry shortly" }, { status: 503 });
+    }
+    throw error;
+  }
 }
 
 // DELETE — release lock
