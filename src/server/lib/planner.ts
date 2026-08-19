@@ -24,7 +24,7 @@ type DelegatedToken = {
 };
 
 function plannerEnabled(): boolean {
-  return env.PLANNER_SYNC_ENABLED === "true" && Boolean(env.PLANNER_PLAN_ID);
+  return Boolean(env.PLANNER_PLAN_ID?.trim()) && Boolean(env.PLANNER_BUCKET_ID?.trim());
 }
 
 async function getDelegatedGraphToken(): Promise<string> {

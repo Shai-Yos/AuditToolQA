@@ -30,6 +30,8 @@ const ADMIN_GROUPS = [
 // App roles (used when the app uses role-based claims instead of group claims)
 const ADMIN_ROLES = ["Admin", "Operator"];
 
+const plannerConfigured = Boolean(env.PLANNER_PLAN_ID?.trim()) && Boolean(env.PLANNER_BUCKET_ID?.trim());
+
 function resolveRole(groups: string[], roles: string[] = []): "ADMIN" | "AUDIT_OWNER" | "USER" {
   if (ADMIN_ROLES.some((r) => roles.includes(r))) return "ADMIN";
   if (ADMIN_GROUPS.some((g) => groups.includes(g))) return "ADMIN";
@@ -49,7 +51,7 @@ export const authConfig = {
         // Do not request Tasks.ReadWrite until it has been granted in Entra ID;
         // otherwise Azure sign-in would fail before the permission is available.
         params: {
-          scope: `openid profile email offline_access User.Read${env.PLANNER_SYNC_ENABLED === "true" ? " Tasks.ReadWrite" : ""}`,
+          scope: `openid profile email offline_access User.Read${plannerConfigured ? " Tasks.ReadWrite" : ""}`,
         },
       },
     }),
