@@ -476,7 +476,7 @@ export function CalendarDateRangePicker({
     label: new Date(2000, i).toLocaleDateString("en-US", { month: "long" }),
   }));
   const yearOptions = Array.from({ length: 11 }, (_, i) => {
-    const y = new Date().getFullYear() - 2 + i;
+    const y = new Date().getFullYear() + i;
     return { value: y, label: String(y) };
   });
 
