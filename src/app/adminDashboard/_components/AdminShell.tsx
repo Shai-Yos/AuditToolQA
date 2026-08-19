@@ -14,13 +14,11 @@ export default function AdminShell({
   user,
   children,
   appLogo,
-  pendingAccessRequests = 0,
   canAccessRegulatoryImplementation = false,
 }: {
   user: ShellUser;
   children: React.ReactNode;
   appLogo?: string | null;
-  pendingAccessRequests?: number;
   canAccessRegulatoryImplementation?: boolean;
 }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -317,20 +315,10 @@ export default function AdminShell({
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z" />
                 </svg>
-                {pendingAccessRequests > 0 && (
-                  <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-amber-500 text-[9px] font-bold text-white">
-                    {pendingAccessRequests > 9 ? "9+" : pendingAccessRequests}
-                  </span>
-                )}
               </span>
               {!sidebarCollapsed && (
                 <span className="min-w-0 flex-1 leading-snug">
                   Access Requests
-                  {pendingAccessRequests > 0 && (
-                    <span className="ml-2 inline-flex items-center rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold text-white leading-none">
-                      {pendingAccessRequests}
-                    </span>
-                  )}
                 </span>
               )}
             </Link>

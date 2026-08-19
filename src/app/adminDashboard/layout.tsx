@@ -18,9 +18,8 @@ export default async function AdminLayout({
     redirect("/login");
   }
 
-  const [logoConfig, pendingAccessRequests, canAccessRegulatoryImplementation] = await Promise.all([
+  const [logoConfig, canAccessRegulatoryImplementation] = await Promise.all([
     db.appConfig.findUnique({ where: { key: "appLogo" } }),
-    db.accessRequest.count({ where: { status: "PENDING" } }),
     hasRegulatoryImplementationAccess(user.id),
   ]);
 
@@ -33,7 +32,6 @@ export default async function AdminLayout({
         image: user.image ?? undefined,
       }}
       appLogo={logoConfig?.value ?? null}
-      pendingAccessRequests={pendingAccessRequests}
       canAccessRegulatoryImplementation={canAccessRegulatoryImplementation}
     >
       {children}
