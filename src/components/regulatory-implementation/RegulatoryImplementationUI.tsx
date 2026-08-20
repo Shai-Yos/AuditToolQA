@@ -167,6 +167,13 @@ function FolderBrowser({
         if (inHere) {
           folders.push(item);
           seenFolderNames.add(segments[segments.length - 1]!);
+        } else if (
+          segments.length > currentPath.length + 1 &&
+          currentPath.every((seg, i) => seg === segments[i])
+        ) {
+          // A deeper folder record — mark its immediate parent as seen so we
+          // don't also create a virtual duplicate from its file descendants.
+          seenFolderNames.add(segments[currentPath.length]!);
         }
         continue;
       }

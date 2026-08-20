@@ -35,7 +35,7 @@ const RIL_PREFIX = `${RIL}/`;
 // Default subfolders created automatically the first time the library is loaded.
 // The CE/MDSAP label is shown in the UI, but the stored folder key remains
 // CE-MDSAP because "/" is reserved as the path separator in this system.
-const DEFAULT_FOLDERS = ["FDA", "CE/MDSAP", "Health Canada", "Other"];
+const DEFAULT_FOLDERS = ["FDA", "CE-MDSAP", "Health Canada", "Other"];
 
 /**
  * Convert a raw DB fileName to the browser-facing relative path (strips the

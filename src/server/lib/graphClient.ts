@@ -245,10 +245,17 @@ export async function isMemberOfGroup(userId: string, groupId: string): Promise<
         body: JSON.stringify({ groupIds: [groupId] }),
       }
     );
-    if (!res.ok) return false;
+    if (!res.ok) {
+      const errorText = await res.text();
+      console.error(`[isMemberOfGroup] Graph API error for user ${userId}, group ${groupId}:`, res.status, errorText);
+      return false;
+    }
     const data = (await res.json()) as { value: string[] };
-    return data.value.includes(groupId);
-  } catch {
+    const isMember = data.value.includes(groupId);
+    console.log(`[isMemberOfGroup] user ${userId} in group ${groupId}:`, isMember);
+    return isMember;
+  } catch (err) {
+    console.error(`[isMemberOfGroup] Exception checking group membership:`, err);
     return false;
   }
 }

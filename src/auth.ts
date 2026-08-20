@@ -64,19 +64,22 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       const requestAccessUrl = `/request-access?${prefillQuery}`;
 
       const placeholder = await db.user.findUnique({ where: { id: azureId } });
+      const hasRegulatoryGroup = groups.includes("68c13639-d086-4cb6-b8bc-2b761df040c1");
+      
       if (placeholder) {
         // Block inactive users from signing in
         if (!placeholder.isActive) {
           return requestAccessUrl;
         }
         // User already exists — preserve their DB role (an admin may have changed it).
-        // Only update non-role fields.
+        // Only update non-role fields and regulatory access.
         try {
           await db.user.update({
             where: { id: azureId },
             data: {
               name: user.name,
               email: user.email!,
+              regulatoryImplementationAccess: hasRegulatoryGroup,
               ...(imageDataUrl ? { image: imageDataUrl } : {}),
             },
           });
@@ -84,7 +87,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           // email conflict with another record — update everything except email and role
           await db.user.update({
             where: { id: azureId },
-            data: { name: user.name, ...(imageDataUrl ? { image: imageDataUrl } : {}) },
+            data: {
+              name: user.name,
+              regulatoryImplementationAccess: hasRegulatoryGroup,
+              ...(imageDataUrl ? { image: imageDataUrl } : {}),
+            },
           });
         }
       } else {
@@ -100,6 +107,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           update: {
             id: azureId,
             name: user.name,
+            regulatoryImplementationAccess: hasRegulatoryGroup,
             // Preserve existing role if record already exists; use Azure-derived role for new records
             ...(existingByEmail ? {} : { role }),
             ...(imageDataUrl ? { image: imageDataUrl } : {}),
@@ -109,6 +117,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             email: user.email!,
             name: user.name,
             role,
+            regulatoryImplementationAccess: hasRegulatoryGroup,
             image: imageDataUrl ?? null,
           },
         });
