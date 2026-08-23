@@ -614,9 +614,10 @@ export function TranscriptionEditor({
       if (lastDocAuthor === author) return;
       lastStampedAuthorRef.current = author;
       if (stampKey) sessionStorage.setItem(stampKey, author);
-      const time = `${new Date().toLocaleTimeString([], {
+      const time = `${new Date().toLocaleTimeString("en-GB", {
         hour: "2-digit",
         minute: "2-digit",
+        hour12: false,
         timeZone: "UTC",
       })} UTC`;
       requestAnimationFrame(() => {
