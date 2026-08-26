@@ -5,6 +5,7 @@ export type ActivityType =
   | "AUDIT_CREATED"
   | "AUDIT_UPDATED"
   | "AUDIT_ARCHIVED"
+  | "AUDIT_REWORKED"
   | "REQUEST_CREATED"
   | "REQUEST_UPDATED"
   | "REQUEST_MOVED"
