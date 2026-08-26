@@ -4,7 +4,7 @@ import { useState, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuditNav } from "@/components/audit-nav-context";
-import { cancelAudit } from "./actions";
+import { cancelAudit, reworkAudit } from "./actions";
 import { AuditCard as SharedAuditCard } from "@/components/audit-card";
 
 type AuditCard = {
@@ -192,12 +192,14 @@ export default function AuditOwnerDashboardClient({
               viewMode={viewMode}
               canExport
               canEdit={a.isOwned}
-              canCancel={a.isOwned}
+              canCancel={a.isOwned && a.status !== "Archived"}
+              canRework={a.isOwned && a.status === "Archived"}
               onOpen={() => {
                 setActiveAudit({ id: a.id, title: a.title, tab: "home" });
                 router.push(`/auditOwnerDashboard/audits/${a.id}`);
               }}
               onCancel={() => cancelAudit(a.id)}
+              onRework={() => reworkAudit(a.id)}
             />
           ))}
 

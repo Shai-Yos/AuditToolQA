@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { cancelAudit } from "../actions";
+import { cancelAudit, reworkAudit } from "../actions";
 import { AuditCard as SharedAuditCard } from "@/components/audit-card";
 
 type AuditCardVM = {
@@ -174,7 +174,9 @@ export default function AllAuditsOwnerClient({ audits }: { audits: AuditCardVM[]
                 canExport
                 canEdit={a.isOwned}
                 canCancel={a.isOwned && a.status !== "Archived"}
+                canRework={a.isOwned && a.status === "Archived"}
                 onCancel={() => cancelAudit(a.id)}
+                onRework={() => reworkAudit(a.id)}
               />
             ))}
 

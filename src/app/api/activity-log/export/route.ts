@@ -7,6 +7,7 @@ const TYPE_LABELS: Record<string, string> = {
   AUDIT_CREATED: "Audit Created",
   AUDIT_UPDATED: "Audit Updated",
   AUDIT_ARCHIVED: "Audit Archived",
+  AUDIT_REWORKED: "Audit Reworked",
   REQUEST_CREATED: "Request Created",
   REQUEST_UPDATED: "Request Updated",
   REQUEST_MOVED: "Request Moved",

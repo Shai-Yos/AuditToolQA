@@ -6,6 +6,8 @@ import { useRouter, usePathname } from "next/navigation";
 import { useAuditNav } from "@/components/audit-nav-context";
 import { cancelAudit as cancelAuditAdmin } from "@/app/adminDashboard/actions";
 import { cancelAudit as cancelAuditOwner } from "@/app/auditOwnerDashboard/actions";
+import { reworkAudit as reworkAuditAdmin } from "@/app/adminDashboard/actions";
+import { reworkAudit as reworkAuditOwner } from "@/app/auditOwnerDashboard/actions";
 import ExportModal, { type ExportType } from "./_components/ExportModal";
 
 type Slot = "agenda" | "readyBox" | "auditors";
@@ -95,6 +97,7 @@ const ACTIVITY_ICON: Record<string, { icon: string; color: string }> = {
   AUDIT_CREATED: { icon: "✨", color: "text-green-600" },
   AUDIT_UPDATED: { icon: "✏️", color: "text-blue-600" },
   AUDIT_ARCHIVED: { icon: "📦", color: "text-slate-600" },
+  AUDIT_REWORKED: { icon: "🔁", color: "text-violet-600" },
   REQUEST_CREATED: { icon: "📝", color: "text-blue-600" },
   REQUEST_UPDATED: { icon: "✏️", color: "text-blue-600" },
   REQUEST_MOVED: { icon: "➡️", color: "text-violet-600" },
@@ -112,6 +115,7 @@ function activityVerb(action: string): string {
     case "AUDIT_CREATED": return "created the audit";
     case "AUDIT_UPDATED": return "updated the audit";
     case "AUDIT_ARCHIVED": return "archived the audit";
+    case "AUDIT_REWORKED": return "reworked the audit";
     case "REQUEST_CREATED": return "created request";
     case "REQUEST_UPDATED": return "updated request";
     case "REQUEST_MOVED": return "moved request";
@@ -1308,6 +1312,7 @@ export default function AuditDashboardUI({ audit, isAdmin = false, canCreateRequ
   const [auditorFiles, setAuditorFiles] = useState<AuditFileItem[]>(audit.auditorFiles);
   const [showShareAuditorsModal, setShowShareAuditorsModal] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
+  const [isReworking, setIsReworking] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
   const [lockError, setLockError] = useState<{ lockedByName: string } | null>(null);
@@ -1319,6 +1324,11 @@ export default function AuditDashboardUI({ audit, isAdmin = false, canCreateRequ
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [audit.id, audit.title, isAdmin, canCreateRequest]);
 
+  useEffect(() => {
+    setIsCancelling(false);
+    setIsReworking(false);
+  }, [audit.status]);
+
   const handleCancelAudit = async () => {
     if (!confirm(`Are you sure you want to cancel "${audit.title}"? It will be archived.`)) return;
     setIsCancelling(true);
@@ -1327,13 +1337,25 @@ export default function AuditDashboardUI({ audit, isAdmin = false, canCreateRequ
       : cancelAuditAdmin;
     const result = await cancelAction(audit.id);
     if (result.ok) {
-      const returnPath = pathname.startsWith("/auditOwnerDashboard")
-        ? "/auditOwnerDashboard"
-        : "/adminDashboard";
-      router.push(returnPath);
+      router.refresh();
     } else {
       alert(result.error ?? "Failed to cancel audit");
       setIsCancelling(false);
+    }
+  };
+
+  const handleReworkAudit = async () => {
+    if (!confirm(`Rework "${audit.title}" and move it back to Draft status?`)) return;
+    setIsReworking(true);
+    const reworkAction = pathname.startsWith("/auditOwnerDashboard")
+      ? reworkAuditOwner
+      : reworkAuditAdmin;
+    const result = await reworkAction(audit.id);
+    if (result.ok) {
+      router.refresh();
+    } else {
+      alert(result.error ?? "Failed to rework audit");
+      setIsReworking(false);
     }
   };
 
@@ -1412,6 +1434,7 @@ export default function AuditDashboardUI({ audit, isAdmin = false, canCreateRequ
     ACTIVE: { label: "Active", className: "bg-green-50 text-green-700 ring-green-200" },
     DRAFT: { label: "Draft", className: "bg-slate-100 text-slate-700 ring-slate-200" },
     COMPLETED: { label: "Completed", className: "bg-blue-50 text-blue-700 ring-blue-200" },
+    ARCHIVED: { label: "Archived", className: "bg-slate-200 text-slate-700 ring-slate-300" },
   } as const;
   const status = statusConfig[audit.status as keyof typeof statusConfig] ?? statusConfig.DRAFT;
 
@@ -1592,7 +1615,17 @@ export default function AuditDashboardUI({ audit, isAdmin = false, canCreateRequ
                   >
                     ✏️ Edit
                   </button>
-                  {audit.status !== "ARCHIVED" && (
+                  {audit.status === "ARCHIVED" && !isCancelling && (
+                    <button
+                      type="button"
+                      onClick={handleReworkAudit}
+                      disabled={isReworking}
+                      className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-violet-200 bg-violet-50 px-4 py-2 text-sm font-semibold text-violet-700 transition hover:bg-violet-100 disabled:opacity-50 dark:border-violet-700 dark:bg-violet-900/40 dark:text-violet-300 dark:hover:bg-violet-800"
+                    >
+                      🔁 {isReworking ? "Reworking…" : "Rework Audit"}
+                    </button>
+                  )}
+                  {audit.status !== "ARCHIVED" && !isReworking && (
                     <button
                       type="button"
                       onClick={handleCancelAudit}

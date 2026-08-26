@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { cancelAudit } from "../actions";
+import { cancelAudit, reworkAudit } from "../actions";
 import { AuditCard as SharedAuditCard } from "@/components/audit-card";
 
 type AuditCardVM = {
@@ -182,7 +182,9 @@ export default function AllAuditsClient({
                 canExport
                 canEdit={userRole === "ADMIN"}
                 canCancel={a.status !== "Archived"}
+                canRework={userRole === "ADMIN" && a.status === "Archived"}
                 onCancel={() => cancelAudit(a.id)}
+                onRework={() => reworkAudit(a.id)}
               />
             ))}
 

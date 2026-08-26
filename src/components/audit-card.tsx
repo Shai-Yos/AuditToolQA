@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import ExportModal, {
@@ -43,6 +43,7 @@ export type AuditCardProps = {
   canExport?: boolean;
   canEdit?: boolean;
   canCancel?: boolean;
+  canRework?: boolean;
   /**
    * Optional override for the "open" navigation action.
    * Useful when the caller needs to set context (e.g. useAuditNav) before navigating.
@@ -54,6 +55,7 @@ export type AuditCardProps = {
    * The component handles optimistic UI; the caller supplies the server action.
    */
   onCancel?: () => Promise<{ ok: boolean; error?: string }>;
+  onRework?: () => Promise<{ ok: boolean; error?: string }>;
 };
 
 // ---------------------------------------------------------------------------
@@ -154,14 +156,22 @@ export function AuditCard({
   canExport = false,
   canEdit = false,
   canCancel = false,
+  canRework = false,
   onOpen,
   onCancel,
+  onRework,
 }: AuditCardProps) {
   const router = useRouter();
   const [isCancelling, setIsCancelling] = useState(false);
+  const [isReworking, setIsReworking] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
   const [lockError, setLockError] = useState<{ lockedByName: string } | null>(null);
+
+  useEffect(() => {
+    setIsCancelling(false);
+    setIsReworking(false);
+  }, [audit.status]);
 
   // ── Navigation ──────────────────────────────────────────────────────────
   const handleOpen = () => {
@@ -169,6 +179,21 @@ export function AuditCard({
       onOpen();
     } else {
       router.push(`${dashboardBase}/audits/${audit.id}`);
+    }
+  };
+
+  // ── Rework to Draft ─────────────────────────────────────────────────────
+  const handleRework = async (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    if (!confirm(`Rework "${audit.title}" and move it back to Draft status?`)) return;
+    if (!onRework) return;
+    setIsReworking(true);
+    const result = await onRework();
+    if (result.ok) {
+      router.refresh();
+    } else {
+      alert(result.error ?? "Failed to rework audit");
+      setIsReworking(false);
     }
   };
 
@@ -441,7 +466,17 @@ export function AuditCard({
                     ✏️ Edit
                   </button>
                 )}
-                {canCancel && (
+                {canRework && !isCancelling && (
+                  <button
+                    onClick={(e) => void handleRework(e)}
+                    disabled={isReworking}
+                    className="inline-flex h-10 items-center justify-center gap-1.5 rounded-xl border border-violet-200 bg-violet-50 px-4 text-sm font-semibold text-violet-700 shadow-sm transition hover:border-violet-300 hover:bg-violet-100 disabled:opacity-50"
+                    title="Rework Audit"
+                  >
+                    🔁 {isReworking ? "Reworking..." : "Rework"}
+                  </button>
+                )}
+                {canCancel && !isReworking && (
                   <button
                     onClick={(e) => void handleCancel(e)}
                     disabled={isCancelling}
@@ -585,7 +620,7 @@ export function AuditCard({
             className="mt-6 flex flex-col gap-2"
             onClick={(e) => e.stopPropagation()}
           >
-            {(canExport || canEdit || canCancel) && (
+            {(canExport || canEdit || canRework || canCancel) && (
               <div className="flex flex-wrap justify-center gap-2">
                 {canExport && (
                   <button
@@ -609,7 +644,17 @@ export function AuditCard({
                     ✏️ Edit
                   </button>
                 )}
-                {canCancel && (
+                {canRework && !isCancelling && (
+                  <button
+                    onClick={(e) => void handleRework(e)}
+                    disabled={isReworking}
+                    className="flex items-center justify-center rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm font-semibold text-violet-700 shadow-sm transition hover:border-violet-300 hover:bg-violet-100 hover:text-violet-800 active:scale-[0.99] disabled:opacity-50"
+                    title="Rework Audit"
+                  >
+                    {isReworking ? "Reworking..." : "🔁 Rework"}
+                  </button>
+                )}
+                {canCancel && !isReworking && (
                   <button
                     onClick={(e) => void handleCancel(e)}
                     disabled={isCancelling}

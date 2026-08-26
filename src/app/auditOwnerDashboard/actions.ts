@@ -60,3 +60,48 @@ export async function cancelAudit(auditId: string): Promise<{ ok: boolean; error
     return { ok: false, error: "Failed to cancel audit. Please try again." };
   }
 }
+
+export async function reworkAudit(auditId: string): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const user = await requireAuditOwner();
+
+    const audit = await db.audit.findUnique({
+      where: { id: auditId },
+      select: { title: true, status: true, createdById: true },
+    });
+
+    if (!audit) {
+      return { ok: false, error: "Audit not found." };
+    }
+
+    if (audit.createdById !== user.id) {
+      return { ok: false, error: "You can only rework audits you created." };
+    }
+
+    if (audit.status === "DRAFT") {
+      return { ok: true };
+    }
+
+    await db.audit.update({
+      where: { id: auditId },
+      data: {
+        status: "DRAFT",
+      },
+    });
+
+    await logActivity({
+      type: "AUDIT_REWORKED",
+      actorName: user.name ?? user.email ?? "Audit Owner",
+      targetId: auditId,
+      targetTitle: audit.title ?? auditId,
+      meta: { previousStatus: audit.status ?? "", toStatus: "DRAFT" },
+    });
+
+    emitGlobalEvent("audits");
+
+    return { ok: true };
+  } catch (error) {
+    console.error("Error reworking audit:", error);
+    return { ok: false, error: "Failed to rework audit. Please try again." };
+  }
+}

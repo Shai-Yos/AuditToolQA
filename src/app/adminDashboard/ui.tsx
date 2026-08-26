@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { cancelAudit } from "./actions";
+import { cancelAudit, reworkAudit } from "./actions";
 import { AuditCard as SharedAuditCard } from "@/components/audit-card";
 
 type DashboardUser = {
@@ -264,8 +264,10 @@ export default function AdminDashboardClient({
                   viewMode={viewMode}
                   canExport
                   canEdit={user.role === "ADMIN"}
-                  canCancel
+                  canCancel={a.status !== "Archived"}
+                  canRework={a.status === "Archived"}
                   onCancel={() => cancelAudit(a.id)}
+                  onRework={() => reworkAudit(a.id)}
                 />
               ))}
 
@@ -498,6 +500,12 @@ const ACTIVITY_META: Record<
     icon: "📦",
     color: "bg-slate-100 text-slate-700 ring-slate-200",
     label: (t) => `Audit archived: ${t}`,
+  },
+
+  AUDIT_REWORKED: {
+    icon: "🔁",
+    color: "bg-violet-50 text-violet-700 ring-violet-200",
+    label: (t) => `Audit reworked: ${t}`,
   },
 
   REQUEST_CREATED: {
