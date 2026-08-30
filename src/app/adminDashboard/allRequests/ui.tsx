@@ -6,8 +6,8 @@ import { useRouter } from "next/navigation";
 import { useTheme } from "@/components/ThemeProvider";
 import { getLabelPillClass } from "@/components/labelColors";
 
-function timeOpen(createdAt: string, closedAt: string | null): string {
-  const end = closedAt ? new Date(closedAt).getTime() : Date.now();
+function timeOpen(createdAt: string, closedAt: string | null, nowMs: number): string {
+  const end = closedAt ? new Date(closedAt).getTime() : nowMs;
   const diffMs = end - new Date(createdAt).getTime();
   const mins = Math.floor(diffMs / 60_000);
   if (mins < 60) return `${mins}m`;
@@ -18,6 +18,26 @@ function timeOpen(createdAt: string, closedAt: string | null): string {
   const months = Math.floor(days / 30);
   if (months < 12) return `${months}mo`;
   return `${Math.floor(months / 12)}y`;
+}
+
+function utcDateKey(value: string): string {
+  return new Date(value).toISOString().slice(0, 10);
+}
+
+function formatUtcDateLabel(value: string): string {
+  return `${new Date(value + "T12:00:00Z").toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  })} UTC`;
+}
+
+function clampDropdownLeft(left: number, dropdownWidth: number): number {
+  const viewportWidth = window.innerWidth;
+  const margin = 8;
+  const maxLeft = Math.max(margin, viewportWidth - dropdownWidth - margin);
+  return Math.min(Math.max(left, margin), maxLeft);
 }
 
 type RequestRow = {
@@ -36,7 +56,7 @@ type RequestRow = {
   auditId: string;
   auditStatus: string;
   createdById: string | null;
-  assigneeIds: string[];
+  assignees: { id: string; name: string }[];
   estimatedDeliveryDate: string | null;
 };
 
@@ -45,9 +65,11 @@ type SortKey =
   | "audit"
   | "status"
   | "labels"
+  | "assignees"
   | "createdBy"
   | "created"
-  | "open";
+  | "open"
+  | "eta";
 
 type SortDir = "asc" | "desc";
 
@@ -79,10 +101,19 @@ function sortValue(r: RequestRow, key: SortKey, now: number): number | string {
       return r.statusOrder;
     case "labels":
       return labelSortKey(r);
+    case "assignees":
+      return r.assignees
+        .map((a) => a.name.toLowerCase())
+        .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }))
+        .join(",");
     case "createdBy":
       return r.createdByName.toLowerCase();
     case "created":
       return new Date(r.createdAt).getTime();
+    case "eta": {
+      if (!r.estimatedDeliveryDate) return Number.POSITIVE_INFINITY;
+      return new Date(r.estimatedDeliveryDate + "T12:00:00Z").getTime();
+    }
     case "open": {
       const end = r.closedAt ? new Date(r.closedAt).getTime() : now;
       return end - new Date(r.createdAt).getTime();
@@ -93,12 +124,14 @@ function sortValue(r: RequestRow, key: SortKey, now: number): number | string {
 export default function AllRequestsClient({
   user,
   currentUserId,
+  initialNowMs,
   requests,
   statusMap,
   audits,
 }: {
   user: { name: string };
   currentUserId: string;
+  initialNowMs: number;
   requests: RequestRow[];
   statusMap: Record<string, { count: number; color: string; order: number }>;
   audits: { id: string; title: string; status: string }[];
@@ -107,16 +140,25 @@ export default function AllRequestsClient({
   const { theme } = useTheme();
   const isDark = theme === "dark";
   const [query, setQuery] = useState("");
-  const [activeStatus, setActiveStatus] = useState<string>("All");
+  const [selectedStatuses, setSelectedStatuses] = useState<string[]>([]);
   const [auditScope, setAuditScope] = useState<"active" | "all">("active");
   const [selectedAuditIds, setSelectedAuditIds] = useState<string[]>([]);
   const [filterAssigned, setFilterAssigned] = useState(false);
   const [filterCreated, setFilterCreated] = useState(false);
-  const [labelFilter, setLabelFilter] = useState<string>("All");
-  const [creatorFilter, setCreatorFilter] = useState<string>("All");
-  const [etaFilter, setEtaFilter] = useState<"All" | "withEta" | "withoutEta">("All");
+  const [selectedAssigneeIds, setSelectedAssigneeIds] = useState<string[]>([]);
+  const [selectedLabels, setSelectedLabels] = useState<string[]>([]);
+  const [selectedCreators, setSelectedCreators] = useState<string[]>([]);
+  const [selectedCreatedDates, setSelectedCreatedDates] = useState<string[]>([]);
+  const [selectedEtaDates, setSelectedEtaDates] = useState<string[]>([]);
   const [sortKey, setSortKey] = useState<SortKey>("created");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [nowMs, setNowMs] = useState(initialNowMs);
+
+  useEffect(() => {
+    setNowMs(Date.now());
+    const timer = window.setInterval(() => setNowMs(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   // Requests and audits scoped by Audit header filter
   const scopeRequests = useMemo(
@@ -174,12 +216,9 @@ export default function AllRequestsClient({
     for (const r of scopedRequests) {
       for (const l of r.labels) unique.add(l);
     }
-    return [
-      { value: "All", label: "All labels" },
-      ...Array.from(unique)
-        .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }))
-        .map((label) => ({ value: label, label })),
-    ];
+    return Array.from(unique)
+      .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }))
+      .map((label) => ({ value: label, label }));
   }, [scopedRequests]);
 
   const creatorOptions = useMemo(() => {
@@ -187,37 +226,105 @@ export default function AllRequestsClient({
     for (const r of scopedRequests) {
       if (r.createdByName) unique.add(r.createdByName);
     }
-    return [
-      { value: "All", label: "All creators" },
-      ...Array.from(unique)
-        .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }))
-        .map((name) => ({ value: name, label: name })),
-    ];
+    return Array.from(unique)
+      .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }))
+      .map((name) => ({ value: name, label: name }));
   }, [scopedRequests]);
 
+  const assigneeOptions = useMemo(() => {
+    const unique = new Map<string, string>();
+    for (const r of scopedRequests) {
+      for (const a of r.assignees) {
+        if (!unique.has(a.id)) unique.set(a.id, a.name || "Unknown User");
+      }
+    }
+    return Array.from(unique.entries())
+      .map(([value, label]) => ({ value, label }))
+      .sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: "base" }));
+  }, [scopedRequests]);
+
+  const createdDateOptions = useMemo(() => {
+    const unique = new Set<string>();
+    for (const r of scopedRequests) unique.add(utcDateKey(r.createdAt));
+    return Array.from(unique)
+      .sort((a, b) => b.localeCompare(a))
+      .map((value) => ({ value, label: formatUtcDateLabel(value) }));
+  }, [scopedRequests]);
+
+  const etaDateOptions = useMemo(() => {
+    const unique = new Set<string>();
+    let hasNoEta = false;
+    for (const r of scopedRequests) {
+      if (r.estimatedDeliveryDate) unique.add(utcDateKey(r.estimatedDeliveryDate));
+      else hasNoEta = true;
+    }
+    const dated = Array.from(unique)
+      .sort((a, b) => b.localeCompare(a))
+      .map((value) => ({ value, label: formatUtcDateLabel(value) }));
+    return hasNoEta ? [...dated, { value: "__NO_ETA__", label: "No ETA" }] : dated;
+  }, [scopedRequests]);
+
+  useEffect(() => {
+    const allowed = new Set(assigneeOptions.map((a) => a.value));
+    setSelectedAssigneeIds((prev) => prev.filter((id) => allowed.has(id)));
+  }, [assigneeOptions]);
+
+  useEffect(() => {
+    const allowed = new Set(labelOptions.map((o) => o.value));
+    setSelectedLabels((prev) => prev.filter((id) => allowed.has(id)));
+  }, [labelOptions]);
+
+  useEffect(() => {
+    const allowed = new Set(creatorOptions.map((o) => o.value));
+    setSelectedCreators((prev) => prev.filter((id) => allowed.has(id)));
+  }, [creatorOptions]);
+
   const statusFilterOptions = useMemo(
-    () => [
-      { value: "All", label: "All statuses" },
-      ...statusEntries.map(([status]) => ({ value: status, label: status })),
-    ],
+    () => statusEntries.map(([status]) => ({ value: status, label: status })),
     [statusEntries],
   );
+
+  useEffect(() => {
+    const allowed = new Set(statusFilterOptions.map((o) => o.value));
+    setSelectedStatuses((prev) => prev.filter((id) => allowed.has(id)));
+  }, [statusFilterOptions]);
+
+  useEffect(() => {
+    const allowed = new Set(createdDateOptions.map((o) => o.value));
+    setSelectedCreatedDates((prev) => prev.filter((id) => allowed.has(id)));
+  }, [createdDateOptions]);
+
+  useEffect(() => {
+    const allowed = new Set(etaDateOptions.map((o) => o.value));
+    setSelectedEtaDates((prev) => prev.filter((id) => allowed.has(id)));
+  }, [etaDateOptions]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     const rows = scopedRequests.filter((r) => {
       const requestType = r.isFormal ? "formal" : "informal";
       const matchesType = requestType.startsWith(q);
-      const matchStatus = activeStatus === "All" || r.statusName === activeStatus;
+      const matchStatus = selectedStatuses.length === 0 || selectedStatuses.includes(r.statusName);
       const matchLabel =
-        labelFilter === "All" ||
-        r.labels.some((l) => l.localeCompare(labelFilter, undefined, { sensitivity: "base" }) === 0);
+        selectedLabels.length === 0 ||
+        r.labels.some((l) =>
+          selectedLabels.some((sel) => l.localeCompare(sel, undefined, { sensitivity: "base" }) === 0),
+        );
       const matchCreator =
-        creatorFilter === "All" ||
-        r.createdByName.localeCompare(creatorFilter, undefined, { sensitivity: "base" }) === 0;
-      const matchEta =
-        etaFilter === "All" ||
-        (etaFilter === "withEta" ? !!r.estimatedDeliveryDate : !r.estimatedDeliveryDate);
+        selectedCreators.length === 0 ||
+        selectedCreators.some(
+          (sel) => r.createdByName.localeCompare(sel, undefined, { sensitivity: "base" }) === 0,
+        );
+      const matchCreatedDate =
+        selectedCreatedDates.length === 0 ||
+        selectedCreatedDates.includes(utcDateKey(r.createdAt));
+      const etaValue = r.estimatedDeliveryDate ? utcDateKey(r.estimatedDeliveryDate) : "__NO_ETA__";
+      const matchEtaDate =
+        selectedEtaDates.length === 0 ||
+        selectedEtaDates.includes(etaValue);
+      const matchAssignees =
+        selectedAssigneeIds.length === 0 ||
+        r.assignees.some((a) => selectedAssigneeIds.includes(a.id));
       const matchQuery =
         !q ||
         (r.trackNumber ?? r.title).toLowerCase().includes(q) ||
@@ -227,11 +334,20 @@ export default function AllRequestsClient({
         r.createdByName.toLowerCase().includes(q);
       const matchMine =
         (!filterAssigned && !filterCreated) ||
-        (filterAssigned && r.assigneeIds.includes(currentUserId)) ||
+        (filterAssigned && r.assignees.some((a) => a.id === currentUserId)) ||
         (filterCreated && r.createdById === currentUserId);
-      return matchStatus && matchLabel && matchCreator && matchEta && matchQuery && matchMine;
+      return (
+        matchStatus &&
+        matchLabel &&
+        matchCreator &&
+        matchCreatedDate &&
+        matchEtaDate &&
+        matchAssignees &&
+        matchQuery &&
+        matchMine
+      );
     });
-    const now = Date.now();
+    const now = nowMs;
     const dir = sortDir === "asc" ? 1 : -1;
     return [...rows].sort((a, b) => {
       const va = sortValue(a, sortKey, now);
@@ -243,15 +359,18 @@ export default function AllRequestsClient({
   }, [
     scopedRequests,
     query,
-    activeStatus,
-    labelFilter,
-    creatorFilter,
-    etaFilter,
+    selectedStatuses,
+    selectedLabels,
+    selectedCreators,
+    selectedCreatedDates,
+    selectedEtaDates,
+    selectedAssigneeIds,
     filterAssigned,
     filterCreated,
     currentUserId,
     sortKey,
     sortDir,
+    nowMs,
   ]);
 
   return (
@@ -280,14 +399,56 @@ export default function AllRequestsClient({
           </div>
         </div>
 
+        {/* Scope toggle */}
+        <div className="mb-6 flex items-center gap-3">
+          <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Show:</span>
+          <div className="flex rounded-lg border border-slate-200 bg-white p-0.5 shadow-sm">
+            <button
+              type="button"
+              onClick={() => {
+                setAuditScope("active");
+                setSelectedAuditIds([]);
+                setSelectedStatuses([]);
+              }}
+              className={`rounded-md px-4 py-1.5 text-xs font-semibold transition ${
+                auditScope === "active"
+                  ? "bg-slate-900 text-white shadow-sm"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              Active Audits
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setAuditScope("all");
+                setSelectedAuditIds([]);
+                setSelectedStatuses([]);
+              }}
+              className={`rounded-md px-4 py-1.5 text-xs font-semibold transition ${
+                auditScope === "all"
+                  ? "bg-slate-900 text-white shadow-sm"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              All Audits
+            </button>
+          </div>
+          {auditScope === "all" && (
+            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+              Includes inactive
+            </span>
+          )}
+        </div>
+
         {/* Status summary cards */}
         <div className="mb-8 flex flex-wrap justify-center gap-3">
           {/* "All" card */}
           <button
             type="button"
-            onClick={() => setActiveStatus("All")}
+            onClick={() => setSelectedStatuses([])}
             className={`w-32 rounded-2xl border p-4 text-left shadow-sm transition hover:shadow-md ${
-              activeStatus === "All"
+              selectedStatuses.length === 0
                 ? "border-slate-400 bg-slate-900 text-white"
                 : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
             }`}
@@ -302,14 +463,18 @@ export default function AllRequestsClient({
             <button
               key={status}
               type="button"
-              onClick={() => setActiveStatus(status)}
+              onClick={() =>
+                setSelectedStatuses((prev) =>
+                  prev.includes(status) ? prev.filter((s) => s !== status) : [...prev, status],
+                )
+              }
               className={`w-32 rounded-2xl border p-4 text-left shadow-sm transition hover:shadow-md ${
-                activeStatus === status
+                selectedStatuses.includes(status)
                   ? ""
                   : "hover:border-opacity-60"
               }`}
               style={
-                activeStatus === status
+                selectedStatuses.includes(status)
                   ? {
                       borderColor: color,
                       backgroundColor: color + "14",
@@ -321,13 +486,13 @@ export default function AllRequestsClient({
             >
               <div
                 className="text-2xl font-bold"
-                style={{ color: activeStatus === status ? color : isDark ? "#e2eaf7" : "#0f172a" }}
+                style={{ color: selectedStatuses.includes(status) ? color : isDark ? "#e2eaf7" : "#0f172a" }}
               >
                 {count}
               </div>
               <div
                 className="mt-1 text-xs font-semibold uppercase tracking-wide opacity-75"
-                style={{ color: activeStatus === status ? color : isDark ? "#a0b2cc" : "#64748b" }}
+                style={{ color: selectedStatuses.includes(status) ? color : isDark ? "#a0b2cc" : "#64748b" }}
               >
                 {status}
               </div>
@@ -348,13 +513,13 @@ export default function AllRequestsClient({
               className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-10 pr-4 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
             />
           </div>
-          {activeStatus !== "All" && (
+          {selectedStatuses.length > 0 && (
             <button
               type="button"
-              onClick={() => setActiveStatus("All")}
+              onClick={() => setSelectedStatuses([])}
               className="text-sm font-semibold text-slate-500 hover:text-slate-800 transition-colors"
             >
-              ✕ Clear filter
+              ✕ Clear status filter
             </button>
           )}
           <div className="ml-auto flex items-center gap-2">
@@ -400,6 +565,19 @@ export default function AllRequestsClient({
             <div className="mt-1 text-sm text-slate-500">
               {query ? "Try a different search term." : "There are no requests yet."}
             </div>
+            {auditScope === "active" && scopedAudits.length === 0 && audits.length > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  setAuditScope("all");
+                  setSelectedAuditIds([]);
+                  setSelectedStatuses([]);
+                }}
+                className="mt-4 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+              >
+                Show requests from inactive audits
+              </button>
+            )}
           </div>
         ) : (
           <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -433,10 +611,12 @@ export default function AllRequestsClient({
                     dir={sortDir}
                     onClick={toggleSort}
                     filter={
-                      <ColumnFilterDropdown<string>
-                        value={activeStatus}
-                        onChange={setActiveStatus}
+                      <MultiSelectFilterDropdown
+                        selected={selectedStatuses}
+                        onSelectedChange={setSelectedStatuses}
                         options={statusFilterOptions}
+                        title="Filter by statuses"
+                        emptyLabel="No statuses"
                       />
                     }
                   />
@@ -447,10 +627,12 @@ export default function AllRequestsClient({
                     dir={sortDir}
                     onClick={toggleSort}
                     filter={
-                      <ColumnFilterDropdown<string>
-                        value={labelFilter}
-                        onChange={setLabelFilter}
+                      <MultiSelectFilterDropdown
+                        selected={selectedLabels}
+                        onSelectedChange={setSelectedLabels}
                         options={labelOptions}
+                        title="Filter by labels"
+                        emptyLabel="No labels"
                       />
                     }
                   />
@@ -461,29 +643,64 @@ export default function AllRequestsClient({
                     dir={sortDir}
                     onClick={toggleSort}
                     filter={
-                      <ColumnFilterDropdown<string>
-                        value={creatorFilter}
-                        onChange={setCreatorFilter}
+                      <MultiSelectFilterDropdown
+                        selected={selectedCreators}
+                        onSelectedChange={setSelectedCreators}
                         options={creatorOptions}
+                        title="Filter by creators"
+                        emptyLabel="No creators"
                       />
                     }
                   />
-                  <SortableTh label="Created" sortKey="created" current={sortKey} dir={sortDir} onClick={toggleSort} />
-                  <SortableTh label="Open" sortKey="open" current={sortKey} dir={sortDir} onClick={toggleSort} />
-                  <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    <span className="inline-flex items-center gap-1">
-                      ETA
-                      <ColumnFilterDropdown<"All" | "withEta" | "withoutEta">
-                        value={etaFilter}
-                        onChange={setEtaFilter}
-                        options={[
-                          { value: "All", label: "All ETA" },
-                          { value: "withEta", label: "With ETA" },
-                          { value: "withoutEta", label: "Without ETA" },
-                        ]}
+                  <SortableTh
+                    label="Assigned To"
+                    sortKey="assignees"
+                    current={sortKey}
+                    dir={sortDir}
+                    onClick={toggleSort}
+                    filter={
+                      <MultiSelectFilterDropdown
+                        selected={selectedAssigneeIds}
+                        onSelectedChange={setSelectedAssigneeIds}
+                        options={assigneeOptions}
+                        title="Filter by assignees"
+                        emptyLabel="No assignees"
                       />
-                    </span>
-                  </th>
+                    }
+                  />
+                  <SortableTh
+                    label="Created"
+                    sortKey="created"
+                    current={sortKey}
+                    dir={sortDir}
+                    onClick={toggleSort}
+                    filter={
+                      <MultiSelectFilterDropdown
+                        selected={selectedCreatedDates}
+                        onSelectedChange={setSelectedCreatedDates}
+                        options={createdDateOptions}
+                        title="Filter by created dates"
+                        emptyLabel="No created dates"
+                      />
+                    }
+                  />
+                  <SortableTh label="Open" sortKey="open" current={sortKey} dir={sortDir} onClick={toggleSort} />
+                  <SortableTh
+                    label="ETA"
+                    sortKey="eta"
+                    current={sortKey}
+                    dir={sortDir}
+                    onClick={toggleSort}
+                    filter={
+                      <MultiSelectFilterDropdown
+                        selected={selectedEtaDates}
+                        onSelectedChange={setSelectedEtaDates}
+                        options={etaDateOptions}
+                        title="Filter by ETA dates"
+                        emptyLabel="No ETA dates"
+                      />
+                    }
+                  />
                 </tr>
               </thead>
               <tbody>
@@ -565,26 +782,45 @@ export default function AllRequestsClient({
                     </td>
 
                     {/* Created By */}
-                    <td className="whitespace-nowrap px-5 py-4 text-sm text-slate-700">
-                      {r.createdByName || <span className="text-slate-400">—</span>}
+                    <td
+                      className="max-w-[220px] px-5 py-4 text-sm text-slate-700 whitespace-normal break-words"
+                      title={r.createdByName || ""}
+                    >
+                      {r.createdByName ? (
+                        <span className="block leading-5">{r.createdByName}</span>
+                      ) : (
+                        <span className="text-slate-400">—</span>
+                      )}
+                    </td>
+
+                    {/* Assigned To */}
+                    <td
+                      className="max-w-[220px] px-5 py-4 text-sm text-slate-700 whitespace-normal break-words"
+                      title={r.assignees.map((a) => a.name).join(", ")}
+                    >
+                      {r.assignees.length > 0 ? (
+                        <span className="block leading-5">{r.assignees.map((a) => a.name).join(", ")}</span>
+                      ) : (
+                        <span className="text-slate-400">—</span>
+                      )}
                     </td>
 
                     {/* Created */}
                     <td className="whitespace-nowrap px-5 py-4 text-xs text-slate-500">
-                      <div>{new Date(r.createdAt).toLocaleDateString(undefined, {
+                      <div>{new Date(r.createdAt).toLocaleDateString("en-US", {
                         month: "short",
                         day: "numeric",
                         year: "numeric",
                         timeZone: "UTC",
                       })} UTC</div>
-                      <div className="text-[11px] text-slate-400">{new Date(r.createdAt).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", timeZone: "UTC" })} UTC</div>
+                      <div className="text-[11px] text-slate-400">{new Date(r.createdAt).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", timeZone: "UTC", hour12: false })} UTC</div>
                     </td>
 
                     {/* Open */}
                     <td className="whitespace-nowrap px-5 py-4 text-xs font-medium text-slate-500">
-                      <span className="inline-flex items-center gap-1.5" title={r.closedAt ? `Closed ${new Date(r.closedAt).toLocaleString(undefined, { timeZone: "UTC" })} UTC` : "Open"}>
+                      <span className="inline-flex items-center gap-1.5" title={r.closedAt ? `Closed ${new Date(r.closedAt).toLocaleString("en-US", { timeZone: "UTC", hour12: false })} UTC` : "Open"}>
                         <span className={`h-1.5 w-1.5 rounded-full ${r.closedAt ? "bg-slate-300" : "bg-green-500"}`} aria-hidden="true" />
-                        {timeOpen(r.createdAt, r.closedAt)}
+                        {timeOpen(r.createdAt, r.closedAt, nowMs)}
                       </span>
                     </td>
 
@@ -608,90 +844,6 @@ export default function AllRequestsClient({
   );
 }
 
-function ColumnFilterDropdown<T extends string>({
-  value,
-  onChange,
-  options,
-}: {
-  value: T;
-  onChange: (v: T) => void;
-  options: { value: T; label: string }[];
-}) {
-  const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState({ top: 0, left: 0 });
-  const btnRef = useRef<HTMLButtonElement>(null);
-  const ref = useRef<HTMLDivElement>(null);
-  const active = value !== (options[0]?.value ?? "");
-
-  useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  function toggle(e: React.MouseEvent) {
-    e.stopPropagation();
-    if (btnRef.current) {
-      const r = btnRef.current.getBoundingClientRect();
-      setPos({ top: r.bottom + 4, left: r.left });
-    }
-    setOpen((v) => !v);
-  }
-
-  return (
-    <div ref={ref} className="relative inline-block">
-      <button
-        ref={btnRef}
-        type="button"
-        onClick={toggle}
-        className={[
-          "rounded p-0.5 transition",
-          active ? "text-blue-600" : "text-slate-400 hover:text-slate-700",
-        ].join(" ")}
-        title="Filter"
-      >
-        <svg className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
-          <path fillRule="evenodd" d="M2.628 1.601C5.028 1.206 7.49 1 10 1s4.973.206 7.372.601a.75.75 0 01.628.74v2.288a2.25 2.25 0 01-.659 1.59l-4.682 4.683a2.25 2.25 0 00-.659 1.59v3.037c0 .684-.31 1.33-.844 1.757l-1.937 1.55A.75.75 0 018 18.25v-5.757a2.25 2.25 0 00-.659-1.591L2.659 6.22A2.25 2.25 0 012 4.629V2.34a.75.75 0 01.628-.74z" clipRule="evenodd" />
-        </svg>
-      </button>
-      {open && (
-        <div
-          className="fixed z-50 min-w-[130px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg ring-1 ring-black/5"
-          style={{ top: pos.top, left: pos.left }}
-        >
-          <ul className="max-h-64 overflow-y-auto p-1">
-            {options.map((o) => (
-              <li
-                key={o.value}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onChange(o.value);
-                  setOpen(false);
-                }}
-                className={[
-                  "flex cursor-pointer items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium transition",
-                  value === o.value ? "bg-slate-100 text-slate-900" : "text-slate-600 hover:bg-slate-50",
-                ].join(" ")}
-              >
-                {value === o.value ? (
-                  <svg className="h-3 w-3 shrink-0 text-blue-600" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clipRule="evenodd" />
-                  </svg>
-                ) : (
-                  <span className="h-3 w-3 shrink-0" />
-                )}
-                <span className="max-w-[280px] truncate">{o.label}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-    </div>
-  );
-}
-
 function AuditColumnFilterDropdown({
   scope,
   onScopeChange,
@@ -706,7 +858,7 @@ function AuditColumnFilterDropdown({
   audits: { id: string; title: string; status: string }[];
 }) {
   const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState({ top: 0, left: 0 });
+  const [pos, setPos] = useState({ top: 0, left: 0, width: 288 });
   const btnRef = useRef<HTMLButtonElement>(null);
   const ref = useRef<HTMLDivElement>(null);
   const active = scope !== "active" || selected.length > 0;
@@ -723,7 +875,8 @@ function AuditColumnFilterDropdown({
     e.stopPropagation();
     if (btnRef.current) {
       const r = btnRef.current.getBoundingClientRect();
-      setPos({ top: r.bottom + 4, left: r.left });
+      const width = Math.min(288, window.innerWidth - 16);
+      setPos({ top: r.bottom + 4, left: clampDropdownLeft(r.left, width), width });
     }
     setOpen((v) => !v);
   }
@@ -755,8 +908,8 @@ function AuditColumnFilterDropdown({
       </button>
       {open && (
         <div
-          className="fixed z-50 w-72 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg ring-1 ring-black/5"
-          style={{ top: pos.top, left: pos.left }}
+          className="fixed z-50 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg ring-1 ring-black/5"
+          style={{ top: pos.top, left: pos.left, width: pos.width }}
         >
           <div className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
             Scope
@@ -807,7 +960,7 @@ function AuditColumnFilterDropdown({
                       toggleAudit(a.id);
                     }}
                     className={[
-                      "flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium transition",
+                      "flex w-full items-start gap-2 rounded-lg px-3 py-1.5 text-xs font-medium transition",
                       checked ? "bg-slate-100 text-slate-900" : "text-slate-600 hover:bg-slate-50",
                     ].join(" ")}
                   >
@@ -883,6 +1036,129 @@ function SortableTh({
         {filter}
       </span>
     </th>
+  );
+}
+
+function MultiSelectFilterDropdown({
+  selected,
+  onSelectedChange,
+  options,
+  title,
+  emptyLabel,
+}: {
+  selected: string[];
+  onSelectedChange: (values: string[]) => void;
+  options: { value: string; label: string }[];
+  title: string;
+  emptyLabel: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState({ top: 0, left: 0, width: 288 });
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const ref = useRef<HTMLDivElement>(null);
+  const active = selected.length > 0;
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  function toggleMenu(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect();
+      const width = Math.min(288, window.innerWidth - 16);
+      setPos({ top: r.bottom + 4, left: clampDropdownLeft(r.left, width), width });
+    }
+    setOpen((v) => !v);
+  }
+
+  function toggleValue(value: string) {
+    onSelectedChange(
+      selected.includes(value)
+        ? selected.filter((x) => x !== value)
+        : [...selected, value],
+    );
+  }
+
+  return (
+    <div ref={ref} className="relative inline-block">
+      <button
+        ref={btnRef}
+        type="button"
+        onClick={toggleMenu}
+        className={[
+          "rounded p-0.5 transition",
+          active ? "text-blue-600" : "text-slate-400 hover:text-slate-700",
+        ].join(" ")}
+        title={title}
+      >
+        <svg className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
+          <path fillRule="evenodd" d="M2.628 1.601C5.028 1.206 7.49 1 10 1s4.973.206 7.372.601a.75.75 0 01.628.74v2.288a2.25 2.25 0 01-.659 1.59l-4.682 4.683a2.25 2.25 0 00-.659 1.59v3.037c0 .684-.31 1.33-.844 1.757l-1.937 1.55A.75.75 0 018 18.25v-5.757a2.25 2.25 0 00-.659-1.591L2.659 6.22A2.25 2.25 0 012 4.629V2.34a.75.75 0 01.628-.74z" clipRule="evenodd" />
+        </svg>
+      </button>
+      {open && (
+        <div
+          className="fixed z-50 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg ring-1 ring-black/5"
+          style={{ top: pos.top, left: pos.left, width: pos.width }}
+        >
+          <ul className="max-h-64 overflow-y-auto p-1">
+            {options.length === 0 && (
+              <li className="px-3 py-2 text-xs text-slate-400">{emptyLabel}</li>
+            )}
+            {options.map((o) => {
+              const checked = selected.includes(o.value);
+              return (
+                <li key={o.value}>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleValue(o.value);
+                    }}
+                    className={[
+                      "flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium transition",
+                      checked ? "bg-slate-100 text-slate-900" : "text-slate-600 hover:bg-slate-50",
+                    ].join(" ")}
+                  >
+                    <span
+                      className={[
+                        "flex h-3.5 w-3.5 items-center justify-center rounded border",
+                        checked ? "border-blue-500 bg-blue-500" : "border-slate-300 bg-white",
+                      ].join(" ")}
+                    >
+                      {checked && (
+                        <svg className="h-2.5 w-2.5 text-white" viewBox="0 0 20 20" fill="currentColor">
+                          <path fillRule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clipRule="evenodd" />
+                        </svg>
+                      )}
+                    </span>
+                    <span className="whitespace-normal break-words leading-5 text-left">{o.label}</span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+          {selected.length > 0 && (
+            <div className="border-t border-slate-100 p-1">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSelectedChange([]);
+                }}
+                className="flex w-full items-center rounded-lg px-3 py-1.5 text-xs font-medium text-slate-500 transition hover:bg-slate-50"
+              >
+                Clear assignee filter
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 

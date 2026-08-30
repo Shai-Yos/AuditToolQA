@@ -23,12 +23,13 @@ export default async function AllRequestsOwnerPage() {
         isFormal: true,
         createdAt: true,
         closedAt: true,
+        estimatedDeliveryDate: true,
         auditTitle: true,
         createdByName: true,
         statusName: true,
         auditId: true,
         createdById: true,
-        assignees: { select: { userId: true } },
+        assignees: { select: { userId: true, assigneeName: true } },
         requestStatus: { select: { color: true, order: true } },
         audit: { select: { status: true } },
       },
@@ -65,12 +66,19 @@ export default async function AllRequestsOwnerPage() {
     auditId: r.auditId,
     auditStatus: r.audit.status,
     createdById: r.createdById ?? null,
-    assigneeIds: r.assignees.map((a) => a.userId),
+    assignees: r.assignees.map((a) => ({
+      id: a.userId,
+      name: a.assigneeName || "Unknown User",
+    })),
+    estimatedDeliveryDate: r.estimatedDeliveryDate
+      ? new Date(r.estimatedDeliveryDate).toISOString().slice(0, 10)
+      : null,
   }));
 
   return (
     <AllRequestsOwnerClient
       currentUserId={user.id}
+      initialNowMs={Date.now()}
       requests={mappedRequests}
       statusMap={statusMap}
       audits={allAudits}

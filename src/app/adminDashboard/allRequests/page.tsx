@@ -29,7 +29,7 @@ export default async function AllRequestsPage() {
         statusName: true,
         auditId: true,
         createdById: true,
-        assignees: { select: { userId: true } },
+        assignees: { select: { userId: true, assigneeName: true } },
         requestStatus: { select: { color: true, order: true } },
         audit: { select: { status: true } },
       },
@@ -67,7 +67,10 @@ export default async function AllRequestsPage() {
     auditId: r.auditId,
     auditStatus: r.audit.status,
     createdById: r.createdById ?? null,
-    assigneeIds: r.assignees.map((a) => a.userId),
+    assignees: r.assignees.map((a) => ({
+      id: a.userId,
+      name: a.assigneeName || "Unknown User",
+    })),
     estimatedDeliveryDate: r.estimatedDeliveryDate
       ? new Date(r.estimatedDeliveryDate).toISOString().slice(0, 10)
       : null,
@@ -77,6 +80,7 @@ export default async function AllRequestsPage() {
     <AllRequestsClient
       user={{ name: user.name ?? user.email ?? "Admin" }}
       currentUserId={user.id}
+      initialNowMs={Date.now()}
       requests={mappedRequests}
       statusMap={statusMap}
       audits={allAudits}
