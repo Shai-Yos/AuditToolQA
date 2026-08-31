@@ -1,4 +1,4 @@
-name: Deploy AuditToolQA
+name: Deploy AuditTool
 
 on:
   push:
