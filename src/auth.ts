@@ -1,6 +1,48 @@
 import NextAuth from "next-auth";
+import type { JWT } from "next-auth/jwt";
 import { db } from "@/server/db";
 import { authConfig } from "./auth.config";
+
+type TokenRefreshResponse = {
+  access_token: string;
+  refresh_token?: string;
+  expires_in?: number;
+};
+
+async function refreshGraphAccessToken(token: JWT): Promise<JWT> {
+  if (!token.refreshToken || typeof token.refreshToken !== "string") return token;
+
+  const plannerConfigured = Boolean(process.env.PLANNER_PLAN_ID?.trim()) && Boolean(process.env.PLANNER_BUCKET_ID?.trim());
+  const refreshResponse = await fetch(
+    `https://login.microsoftonline.com/${process.env.AZURE_AD_TENANT_ID}/oauth2/v2.0/token`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        client_id: String(process.env.AZURE_AD_CLIENT_ID ?? ""),
+        client_secret: String(process.env.AZURE_AD_CLIENT_SECRET ?? ""),
+        grant_type: "refresh_token",
+        refresh_token: token.refreshToken,
+        scope: `openid profile email offline_access User.Read${plannerConfigured ? " Tasks.ReadWrite" : ""}`,
+      }),
+    },
+  );
+
+  if (!refreshResponse.ok) {
+    const detail = await refreshResponse.text();
+    throw new Error(`Graph token refresh failed (${refreshResponse.status}): ${detail.slice(0, 400)}`);
+  }
+
+  const refreshed = (await refreshResponse.json()) as TokenRefreshResponse;
+  return {
+    ...token,
+    accessToken: refreshed.access_token,
+    // Azure may rotate refresh tokens; persist the newest one when provided.
+    refreshToken: refreshed.refresh_token ?? token.refreshToken,
+    accessTokenExpiresAt: Date.now() + (refreshed.expires_in ?? 3600) * 1000,
+    graphRefreshError: undefined,
+  } as JWT;
+}
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
@@ -158,6 +200,17 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           }
         }
       }
+
+      const expiresAt = typeof token.accessTokenExpiresAt === "number" ? token.accessTokenExpiresAt : undefined;
+      const shouldRefresh = Boolean(token.refreshToken) && Boolean(expiresAt && Date.now() >= expiresAt - 60_000);
+      if (shouldRefresh) {
+        try {
+          return await refreshGraphAccessToken(token);
+        } catch (error) {
+          token.graphRefreshError = error instanceof Error ? error.message : "Graph token refresh failed";
+        }
+      }
+
       return token;
     },
   },

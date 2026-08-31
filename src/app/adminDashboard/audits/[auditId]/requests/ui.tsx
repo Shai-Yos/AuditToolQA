@@ -385,11 +385,11 @@ export default function AuditRequestsClient({
                         {r.createdByName || <span className="text-slate-400">—</span>}
                       </td>
                       <td className="whitespace-nowrap px-5 py-4 text-xs text-slate-500">
-                        <div>{new Date(r.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })} UTC</div>
-                        <div className="text-[11px] text-slate-400">{new Date(r.createdAt).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", timeZone: "UTC" })} UTC</div>
+                        <div>{new Date(r.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })} UTC</div>
+                        <div className="text-[11px] text-slate-400">{new Date(r.createdAt).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", timeZone: "UTC" })} UTC</div>
                       </td>
                       <td className="whitespace-nowrap px-5 py-4 text-xs font-medium text-slate-500">
-                        <span className="inline-flex items-center gap-1.5" title={r.closedAt ? `Closed ${new Date(r.closedAt).toLocaleString(undefined, { timeZone: "UTC" })} UTC` : "Open"}>
+                        <span className="inline-flex items-center gap-1.5" title={r.closedAt ? `Closed ${new Date(r.closedAt).toLocaleString("en-US", { timeZone: "UTC" })} UTC` : "Open"}>
                           <span className={`h-1.5 w-1.5 rounded-full ${r.closedAt ? "bg-slate-300" : "bg-green-500"}`} aria-hidden="true" />
                           {timeOpen(r.createdAt, r.closedAt)}
                         </span>
