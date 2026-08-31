@@ -1,6 +1,7 @@
 name: Deploy AuditTool
 
 on:
+  # No-op update to trigger a new commit/push when needed.
   push:
     branches:
       - main
