@@ -6,15 +6,10 @@ import { useRouter } from "next/navigation";
 import { createRequest, type CreateRequestInput } from "./actions";
 import { useAuditNav } from "@/components/audit-nav-context";
 import { DatePicker } from "@/components/DatePicker";
+import { DEFAULT_REQUEST_LABELS } from "@/components/request-labels-shared";
 
 type State = { ok: true; redirectTo: string } | { ok: false; error: string };
 const initialState: State = { ok: false, error: "" };
-
-const STATIC_LABELS = [
-  "P&PC", "D&D", "CAPA", "Complaints", "C&R", "Management Control",
-  "Training", "ICQA", "PMS", "Risk", "Regulatory", "Tool Validation",
-  "HR", "IT", "Service",
-];
 
 const FR_COLORS_INACTIVE = [
   "bg-red-50    text-red-700    ring-red-300",
@@ -82,6 +77,7 @@ export default function CreateRequestUI({
   const [pending, startTransition] = useTransition();
   const [state, setState] = useState<State>(initialState);
   const [selectedLabels, setSelectedLabels] = useState<string[]>([]);
+  const [availableLabels, setAvailableLabels] = useState<string[]>(DEFAULT_REQUEST_LABELS);
   const [customLabelInput, setCustomLabelInput] = useState("");
   const [selectedFr, setSelectedFr] = useState<number>(1);
   const [estimatedDeliveryDate, setEstimatedDeliveryDate] = useState("");
@@ -102,6 +98,25 @@ export default function CreateRequestUI({
       return () => clearTimeout(timer);
     }
   }, [state]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch("/api/request-labels", { cache: "no-store" });
+        if (!res.ok) return;
+        const data = (await res.json()) as { labels?: string[] };
+        if (!cancelled && Array.isArray(data.labels) && data.labels.length > 0) {
+          setAvailableLabels(data.labels);
+        }
+      } catch {
+        // keep defaults on network failures
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const toggleLabel = (lbl: string) =>
     setSelectedLabels((prev) =>
@@ -243,7 +258,7 @@ export default function CreateRequestUI({
           <div>
             <div className="text-sm font-semibold text-slate-700 mb-2">Labels</div>
             <div className="flex flex-wrap gap-2">
-              {STATIC_LABELS.map((lbl) => {
+              {availableLabels.map((lbl) => {
                 const palette = LABEL_PALETTE[lbl] ?? { inactive: "border-slate-200 bg-white text-slate-600 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700", active: "border-blue-500 bg-blue-500 text-white shadow-sm" };
                 return (
                   <button
@@ -260,7 +275,7 @@ export default function CreateRequestUI({
                   </button>
                 );
               })}
-              {selectedLabels.filter((lbl) => !STATIC_LABELS.includes(lbl)).map((lbl, idx) => {
+              {selectedLabels.filter((lbl) => !availableLabels.includes(lbl)).map((lbl, idx) => {
                 const c = CUSTOM_LABEL_COLORS[idx % CUSTOM_LABEL_COLORS.length]!;
                 return (
                   <button

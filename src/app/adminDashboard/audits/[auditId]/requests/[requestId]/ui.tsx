@@ -10,6 +10,7 @@ import MentionTextarea, { renderMentionText } from "@/components/MentionTextarea
 import { api } from "@/trpc/react";
 import { DatePicker } from "@/components/DatePicker";
 import { RequestPrintView } from "@/components/request-print-view";
+import { DEFAULT_REQUEST_LABELS } from "@/components/request-labels-shared";
 
 type State = { ok: true } | { ok: false; error: string };
 const initialState: State = { ok: false, error: "" };
@@ -192,11 +193,7 @@ export default function RequestUI({
     });
   }, [lockState]);
 
-  const STATIC_LABELS = [
-    "P&PC", "D&D", "CAPA", "Complaints", "C&R", "Management Control",
-    "Training", "ICQA", "PMS", "Risk", "Regulatory", "Tool Validation",
-    "HR", "IT", "Service",
-  ];
+  const [availableLabels, setAvailableLabels] = useState<string[]>(DEFAULT_REQUEST_LABELS);
 
   // Derive initial FR and extra labels from the labels array
   const initialFR = request.labels.find((l) => /^FR\d+$/.test(l))?.replace("FR", "") ?? "1";
@@ -209,6 +206,25 @@ export default function RequestUI({
     setSelectedLabels((prev) =>
       prev.includes(lbl) ? prev.filter((l) => l !== lbl) : [...prev, lbl]
     );
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch("/api/request-labels", { cache: "no-store" });
+        if (!res.ok) return;
+        const data = (await res.json()) as { labels?: string[] };
+        if (!cancelled && Array.isArray(data.labels) && data.labels.length > 0) {
+          setAvailableLabels(data.labels);
+        }
+      } catch {
+        // keep defaults on network failures
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const [basicPending, startBasicTransition] = useTransition();
   const [basicState, setBasicState] = useState<State>(initialState);
@@ -469,7 +485,7 @@ export default function RequestUI({
             <div>
               <span className="text-sm font-semibold text-slate-700">Labels</span>
               <div className="mt-2 flex flex-wrap gap-2">
-                {STATIC_LABELS.map((lbl) => {
+                {availableLabels.map((lbl) => {
                   const palette = LABEL_PALETTE[lbl] ?? { inactive: "border-slate-200 bg-white text-slate-600 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700", active: "border-blue-500 bg-blue-500 text-white shadow-sm" };
                   return (
                     <button
@@ -487,7 +503,7 @@ export default function RequestUI({
                     </button>
                   );
                 })}
-                {selectedLabels.filter((lbl) => !STATIC_LABELS.includes(lbl)).map((lbl, idx) => {
+                {selectedLabels.filter((lbl) => !availableLabels.includes(lbl)).map((lbl, idx) => {
                   const c = CUSTOM_LABEL_COLORS[idx % CUSTOM_LABEL_COLORS.length]!;
                   return (
                     <button

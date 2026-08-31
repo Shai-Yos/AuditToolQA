@@ -351,6 +351,19 @@ export default function AdminShell({
             newTab
           />
           <NavItem
+            href="/adminDashboard/requestLabels"
+            icon={
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M20.59 13.41L11 3.83A2 2 0 009.59 3H4a1 1 0 00-1 1v5.59a2 2 0 00.59 1.41L13.17 20.6a2 2 0 002.83 0l4.59-4.59a2 2 0 000-2.83z" />
+                <circle cx="7.5" cy="7.5" r="1.25" fill="currentColor" />
+              </svg>
+            }
+            label="Request Labels"
+            active={pathname.startsWith("/adminDashboard/requestLabels")}
+            collapsed={sidebarCollapsed}
+            newTab
+          />
+          <NavItem
             href="/adminDashboard/appLogo"
             icon={
               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>

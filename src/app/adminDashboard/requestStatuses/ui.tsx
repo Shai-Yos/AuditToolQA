@@ -127,26 +127,27 @@ export default function RequestStatusesUI({
                 onDragOver={(e) => handleDragOver(e, s._key)}
                 onDragEnd={handleDragEnd}
                 className={[
-                  "flex items-center gap-3 rounded-2xl border px-4 py-3 transition-all shadow-sm select-none",
+                  "relative overflow-hidden rounded-2xl border border-transparent px-3 py-3 shadow-sm transition select-none dark:brightness-95 dark:saturate-100",
                   isDragging
                     ? "scale-95 opacity-50 ring-2 ring-blue-300 shadow-none"
                     : "hover:shadow-md",
                   colorInfo.bg,
                 ].join(" ")}
-                style={{ borderColor: s.color + "35" }}
               >
-                <svg
-                  className="h-5 w-5 shrink-0 cursor-move text-slate-400"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8h16M4 16h16" />
-                </svg>
+                <div className="pointer-events-none absolute inset-0 bg-white/25 dark:bg-black/10" />
+                <div className="relative z-10 flex items-center gap-3 w-full">
+                  <svg
+                    className="h-5 w-5 shrink-0 cursor-move text-slate-700/80 dark:text-white/80"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8h16M4 16h16" />
+                  </svg>
 
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-white text-sm font-bold text-slate-900 border border-slate-200 shadow-sm">
-                  {i + 1}
-                </div>
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl border border-slate-300/60 bg-white/50 text-xs font-semibold text-slate-900 dark:border-white/60 dark:bg-white/20 dark:text-white">
+                    {i + 1}
+                  </div>
 
                 {editingKey === s._key ? (
                   <input
@@ -160,13 +161,13 @@ export default function RequestStatusesUI({
                       if (e.key === "Escape") setEditingKey(null);
                     }}
                     onClick={(e) => e.stopPropagation()}
-                    className="flex-1 min-w-0 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-slate-400"
+                    className="flex-1 min-w-0 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-300"
                   />
                 ) : (
                   <span
                     onClick={(e) => { e.stopPropagation(); startEdit(s._key, s.name); }}
                     title="Click to rename"
-                    className="flex-1 min-w-0 cursor-pointer truncate rounded-xl px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-white/60 transition"
+                    className="flex-1 min-w-0 cursor-pointer truncate rounded-xl px-3 py-2 text-sm font-semibold text-slate-900 transition dark:text-white"
                   >
                     {s.name}
                   </span>
@@ -183,6 +184,7 @@ export default function RequestStatusesUI({
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                   </svg>
                 </button>
+                </div>
               </div>
             );
           })}
