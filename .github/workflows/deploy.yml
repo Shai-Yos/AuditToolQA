@@ -1,7 +1,6 @@
 name: Deploy AuditTool
 
 on:
-  # No-op update to trigger a new commit/push when needed.
   push:
     branches:
       - main
@@ -14,4 +13,4 @@ jobs:
       - name: Run deployment script
         shell: powershell
         run: |
-          powershell.exe -ExecutionPolicy Bypass -File "C:\DeployScripts\deploy-audits-tool-qa.ps1"
+          powershell.exe -ExecutionPolicy Bypass -File "C:\DeployScripts\deploy-audits-tool.ps1"
