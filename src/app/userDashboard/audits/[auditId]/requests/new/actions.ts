@@ -4,6 +4,7 @@ import { db } from "~/server/db";
 import { requireUser } from "~/server/helpers/currentUser";
 import { logActivity } from "~/server/helpers/logActivity";
 import { syncNewRequestToPlanner } from "~/server/lib/planner";
+import { Prisma } from "generated/prisma";
 
 type State = { ok: true; redirectTo: string } | { ok: false; error: string };
 
@@ -73,38 +74,61 @@ export async function createRequest(_: State, input: FormData | CreateRequestInp
 
   let trackNumber = "";
   let requestId = "";
-  await db.$transaction(async (tx) => {
-    const counterKey = isFormal ? `formalNext:${auditId}` : `informalNext:${auditId}`;
-    const counterRow = await tx.appConfig.findUnique({ where: { key: counterKey } });
-    const seq = Number(counterRow?.value ?? "1");
-    await tx.appConfig.upsert({
-      where: { key: counterKey },
-      create: { key: counterKey, value: String(seq + 1) },
-      update: { value: String(seq + 1) },
-    });
-    const seqStr = String(seq).padStart(4, "0");
-    const frPart = frIndex ? `–FR${frIndex}` : "";
-    trackNumber = isFormal
-      ? `${seqStr}${frPart}–${title}`
-      : `INF${seqStr}${frPart}–${title}`;
-    const created = await tx.request.create({
-      data: {
-        auditId,
-        title,
-        isFormal,
-        requestStatusId: firstCol.id,
-        statusName: firstCol.name,
-        auditTitle: audit?.title ?? "",
-        labels: JSON.stringify(labels),
-        createdById: currentUser.id,
-        createdByName: currentUser.name ?? currentUser.email ?? "",
-        trackNumber,
-        estimatedDeliveryDate,
-      },
-      select: { id: true },
-    });
-    requestId = created.id;
-  });
+  const maxCreateAttempts = 3;
+  for (let attempt = 1; attempt <= maxCreateAttempts; attempt++) {
+    try {
+      await db.$transaction(async (tx) => {
+        const counterKey = isFormal ? `formalNext:${auditId}` : `informalNext:${auditId}`;
+        const counterRow = await tx.appConfig.findUnique({ where: { key: counterKey } });
+        const seq = Number(counterRow?.value ?? "1");
+        await tx.appConfig.upsert({
+          where: { key: counterKey },
+          create: { key: counterKey, value: String(seq + 1) },
+          update: { value: String(seq + 1) },
+        });
+        const seqStr = String(seq).padStart(4, "0");
+        const frPart = frIndex ? `–FR${frIndex}` : "";
+        trackNumber = isFormal
+          ? `${seqStr}${frPart}–${title}`
+          : `INF${seqStr}${frPart}–${title}`;
+        const created = await tx.request.create({
+          data: {
+            auditId,
+            title,
+            isFormal,
+            requestStatusId: firstCol.id,
+            statusName: firstCol.name,
+            auditTitle: audit?.title ?? "",
+            labels: JSON.stringify(labels),
+            createdById: currentUser.id,
+            createdByName: currentUser.name ?? currentUser.email ?? "",
+            trackNumber,
+            estimatedDeliveryDate,
+          },
+          select: { id: true },
+        });
+        requestId = created.id;
+      });
+      break;
+    } catch (err) {
+      if (!(err instanceof Prisma.PrismaClientKnownRequestError) || err.code !== "P2002") {
+        throw err;
+      }
+
+      const target = (err.meta?.target ?? []) as string[];
+      const isTrackNumberUnique = target.includes("trackNumber") || target.includes("auditId_trackNumber");
+
+      if (isTrackNumberUnique && attempt < maxCreateAttempts) {
+        continue;
+      }
+
+      if (isTrackNumberUnique) {
+        return { ok: false, error: "Could not generate a unique track number. Please try again." };
+      }
+
+      return { ok: false, error: "Unable to create request due to a duplicate unique value. Please try again." };
+    }
+  }
 
   await syncNewRequestToPlanner({
     id: requestId,
