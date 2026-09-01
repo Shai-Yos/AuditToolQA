@@ -19,6 +19,7 @@ import {
   removeValue,
 } from "@/components/audit-form/audit-form-shared";
 import { RoomAssigner, CalendarDateRangePicker, StepIcon } from "@/components/audit-form/audit-form-components";
+import { isMandatoryRequestStatus } from "@/lib/request-status-rules";
 
 export default function CreateAuditForm({
   defaultStatuses,
@@ -77,11 +78,33 @@ export default function CreateAuditForm({
     setBrRoles((prev) => {
       const next = Array.from({ length: backRoomsCount }, (_, i) => {
         const existing = prev.find((r) => r.brIndex === i + 1);
-        return existing ?? { brIndex: i + 1, leadUserIds: [], callerUserIds: [], qmUserIds: [], qualityReviewerUserIds: [], smePrepUserIds: [], outgoingUserIds: [], incomingUserIds: [], recordsPrepUserIds: [], connectedFrIndices: [] };
+        return existing ?? {
+          brIndex: i + 1,
+          leadUserIds: [],
+          callerUserIds: [],
+          qmUserIds: [],
+          qualityReviewerUserIds: [],
+          smePrepUserIds: [],
+          outgoingUserIds: [],
+          incomingUserIds: [],
+          recordsPrepUserIds: [],
+          connectedFrIndices: frontRoomsCount === 1 && backRoomsCount === 1 ? [1] : [],
+        };
       });
       return next;
     });
-  }, [backRoomsCount]);
+  }, [backRoomsCount, frontRoomsCount]);
+
+  React.useEffect(() => {
+    if (frontRoomsCount !== 1 || backRoomsCount !== 1) return;
+    setBrRoles((prev) =>
+      prev.map((r) =>
+        r.brIndex === 1 && r.connectedFrIndices.length === 0
+          ? { ...r, connectedFrIndices: [1] }
+          : r,
+      ),
+    );
+  }, [frontRoomsCount, backRoomsCount]);
 
   const stepIndex = useMemo(() => steps.findIndex((s) => s.key === step), [step]);
 
@@ -137,12 +160,18 @@ export default function CreateAuditForm({
   }
 
   function handleDragStart(idx: number) {
+    const item = statusColumns[idx];
+    if (!item || isMandatoryRequestStatus(item.name)) return;
     setDraggedIndex(idx);
   }
 
   function handleDragOver(e: React.DragEvent, idx: number) {
     e.preventDefault();
     if (draggedIndex === null || draggedIndex === idx) return;
+    const dragged = statusColumns[draggedIndex];
+    const target = statusColumns[idx];
+    if (!dragged || !target) return;
+    if (isMandatoryRequestStatus(dragged.name) || isMandatoryRequestStatus(target.name)) return;
 
     setStatusColumns((prev) => {
       const next = [...prev];
@@ -160,6 +189,8 @@ export default function CreateAuditForm({
   }
 
   function removeStatus(i: number) {
+    const target = statusColumns[i];
+    if (!target || isMandatoryRequestStatus(target.name)) return;
     setStatusColumns((prev) => prev.filter((_, idx) => idx !== i).map((c, idx) => ({ ...c, order: idx + 1 })));
   }
 
@@ -181,6 +212,7 @@ export default function CreateAuditForm({
   const [editingStatusName, setEditingStatusName] = useState("");
 
   function startEditStatus(idx: number) {
+    if (isMandatoryRequestStatus(statusColumns[idx]!.name)) return;
     setEditingStatusIdx(idx);
     setEditingStatusName(statusColumns[idx]!.name);
   }
@@ -576,11 +608,18 @@ export default function CreateAuditForm({
                         <div className="bg-white px-5 py-4 flex flex-wrap gap-2">
                           {frRoles.map((fr) => {
                             const isConnected = br.connectedFrIndices.includes(fr.frIndex);
+                            const isLockedSingleConnection =
+                              frontRoomsCount === 1 &&
+                              backRoomsCount === 1 &&
+                              br.brIndex === 1 &&
+                              fr.frIndex === 1;
                             return (
                               <button
                                 key={fr.frIndex}
                                 type="button"
+                                disabled={isLockedSingleConnection}
                                 onClick={() => {
+                                  if (isLockedSingleConnection) return;
                                   setBrRoles((prev) => prev.map((r) => {
                                     if (r.brIndex !== br.brIndex) return r;
                                     const newIndices = isConnected
@@ -590,10 +629,11 @@ export default function CreateAuditForm({
                                   }));
                                 }}
                                 className={[
-                                  "rounded-xl border-2 px-4 py-2 text-sm font-semibold transition active:scale-95",
+                                  "rounded-xl border-2 px-4 py-2 text-sm font-semibold transition",
                                   isConnected
                                     ? "border-blue-500 bg-blue-500 text-white shadow-sm"
                                     : "border-slate-200 bg-slate-50 text-slate-600 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700",
+                                  isLockedSingleConnection ? "cursor-not-allowed opacity-90" : "active:scale-95",
                                 ].join(" ")}
                               >
                                 {isConnected ? "✓ " : ""}FR {fr.frIndex}
@@ -601,6 +641,11 @@ export default function CreateAuditForm({
                             );
                           })}
                         </div>
+                        {frontRoomsCount === 1 && backRoomsCount === 1 ? (
+                          <div className="border-t border-violet-200 bg-violet-100 px-5 py-2 text-xs font-medium text-violet-700">
+                            FR 1 and BR 1 are auto-connected and locked for the 1:1 setup.
+                          </div>
+                        ) : null}
                       </div>
                     ))}
                   </div>
@@ -772,6 +817,9 @@ export default function CreateAuditForm({
                 <p className="mt-3 text-sm text-slate-600">
                   Define the columns for your kanban board. Requests will move through these stages. Drag to reorder.
                 </p>
+                <p className="mt-2 text-xs font-medium text-slate-500">
+                  Mandatory statuses cannot be renamed, deleted, or reordered: Incoming, Closed, Cancelled, On Hold.
+                </p>
 
                 {statusColumns.length === 0 && (
                   <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
@@ -782,10 +830,11 @@ export default function CreateAuditForm({
                 <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-3 px-0 sm:px-2">
                   {statusColumns.map((c, idx) => {
                     const colorInfo = statusColors.find((sc) => sc.value === c.color) || statusColors[0]!;
+                    const isMandatory = isMandatoryRequestStatus(c.name);
                     return (
                       <div
                         key={`${c.order}-${idx}`}
-                        draggable
+                        draggable={!isMandatory}
                         onDragStart={() => handleDragStart(idx)}
                         onDragOver={(e) => handleDragOver(e, idx)}
                         onDragEnd={handleDragEnd}
@@ -796,7 +845,7 @@ export default function CreateAuditForm({
                         ].join(" ")}
                         style={{ borderColor: c.color + "35" }}
                       >
-                        <svg className="h-5 w-5 shrink-0 text-slate-400 cursor-move" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <svg className={["h-5 w-5 shrink-0 text-slate-400", isMandatory ? "cursor-not-allowed opacity-50" : "cursor-move"].join(" ")} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8h16M4 16h16" />
                         </svg>
 
@@ -804,7 +853,7 @@ export default function CreateAuditForm({
                           {idx + 1}
                         </div>
 
-                        {editingStatusIdx === idx ? (
+                        {editingStatusIdx === idx && !isMandatory ? (
                           <input
                             autoFocus
                             type="text"
@@ -821,23 +870,34 @@ export default function CreateAuditForm({
                         ) : (
                           <span
                             onClick={(e) => { e.stopPropagation(); startEditStatus(idx); }}
-                            title="Click to rename"
-                            className="flex-1 min-w-0 cursor-pointer truncate rounded-xl px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-white/60 transition"
+                            title={isMandatory ? "Mandatory status" : "Click to rename"}
+                            className={[
+                              "flex-1 min-w-0 truncate rounded-xl px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-white/60 transition",
+                              isMandatory ? "cursor-default" : "cursor-pointer",
+                            ].join(" ")}
                           >
                             {c.name}
                           </span>
                         )}
 
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); removeStatus(idx); }}
-                          className="shrink-0 rounded-xl border border-slate-200 bg-white p-2 text-slate-500 shadow-sm transition hover:border-red-300 hover:bg-red-50 hover:text-red-600 focus:outline-none focus:ring-2 focus:ring-red-100"
-                          title="Remove"
-                        >
-                          <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
-                        </button>
+                        {isMandatory && (
+                          <span className="shrink-0 rounded-full border border-slate-300 bg-white/80 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+                            Mandatory
+                          </span>
+                        )}
+
+                        {!isMandatory && (
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); removeStatus(idx); }}
+                            className="shrink-0 rounded-xl border border-slate-200 bg-white p-2 text-slate-500 shadow-sm transition hover:border-red-300 hover:bg-red-50 hover:text-red-600 focus:outline-none focus:ring-2 focus:ring-red-100"
+                            title="Remove"
+                          >
+                            <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
+                        )}
                       </div>
                     );
                   })}

@@ -3,15 +3,18 @@
 import { useState, useTransition, useRef } from "react";
 import { statusColors } from "@/components/audit-form/audit-form-shared";
 import type { saveDefaultStatuses } from "./actions";
+import { isMandatoryRequestStatus } from "@/lib/request-status-rules";
 
 type StatusDraft = { name: string; order: number; color: string };
 type StatusItem = StatusDraft & { _key: string };
 
 export default function RequestStatusesUI({
   defaultStatuses,
+  appDefaultStatuses,
   saveDefaultStatuses: onSave,
 }: {
   defaultStatuses: StatusDraft[];
+  appDefaultStatuses: StatusDraft[];
   saveDefaultStatuses: typeof saveDefaultStatuses;
 }) {
   const [statuses, setStatuses] = useState<StatusItem[]>(() =>
@@ -28,10 +31,15 @@ export default function RequestStatusesUI({
   const reset = () =>
     setStatuses(defaultStatuses.map((s, i) => ({ ...s, _key: `${i}|${s.name}` })));
 
+  const restoreAppDefaults = () =>
+    setStatuses(appDefaultStatuses.map((s, i) => ({ ...s, order: i + 1, _key: `app|${i}|${s.name}` })));
+
   const remove = (key: string) =>
-    setStatuses((prev) =>
-      prev.filter((s) => s._key !== key).map((s, idx) => ({ ...s, order: idx + 1 })),
-    );
+    setStatuses((prev) => {
+      const target = prev.find((s) => s._key === key);
+      if (!target || isMandatoryRequestStatus(target.name)) return prev;
+      return prev.filter((s) => s._key !== key).map((s, idx) => ({ ...s, order: idx + 1 }));
+    });
 
   const add = (name: string) => {
     const trimmed = name.trim();
@@ -49,6 +57,7 @@ export default function RequestStatusesUI({
   };
 
   const startEdit = (key: string, name: string) => {
+    if (isMandatoryRequestStatus(name)) return;
     setEditingKey(key);
     setEditingName(name);
   };
@@ -64,6 +73,8 @@ export default function RequestStatusesUI({
   };
 
   const handleDragStart = (key: string) => {
+    const status = statuses.find((s) => s._key === key);
+    if (!status || isMandatoryRequestStatus(status.name)) return;
     dragKey.current = key;
     setDraggingKey(key);
   };
@@ -74,6 +85,10 @@ export default function RequestStatusesUI({
       const fromIdx = prev.findIndex((s) => s._key === dragKey.current);
       const toIdx = prev.findIndex((s) => s._key === key);
       if (fromIdx === -1 || toIdx === -1) return prev;
+      const from = prev[fromIdx];
+      const to = prev[toIdx];
+      if (!from || !to) return prev;
+      if (isMandatoryRequestStatus(from.name) || isMandatoryRequestStatus(to.name)) return prev;
       const next = [...prev];
       const [moved] = next.splice(fromIdx, 1);
       next.splice(toIdx, 0, moved!);
@@ -112,6 +127,9 @@ export default function RequestStatusesUI({
           <p className="mt-1.5 text-sm text-slate-500 dark:text-slate-400">
             Pre-populated when a new audit is created. Drag to reorder, click a label to rename.
           </p>
+          <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+            Mandatory statuses cannot be renamed, deleted, or reordered: Incoming, Closed, Cancelled, On Hold.
+          </p>
         </div>
 
         {/* Statuses grid */}
@@ -119,10 +137,11 @@ export default function RequestStatusesUI({
           {statuses.map((s, i) => {
             const colorInfo = statusColors.find((sc) => sc.value === s.color) ?? statusColors[0]!;
             const isDragging = draggingKey === s._key;
+            const isMandatory = isMandatoryRequestStatus(s.name);
             return (
               <div
                 key={s._key}
-                draggable
+                draggable={!isMandatory}
                 onDragStart={() => handleDragStart(s._key)}
                 onDragOver={(e) => handleDragOver(e, s._key)}
                 onDragEnd={handleDragEnd}
@@ -137,7 +156,10 @@ export default function RequestStatusesUI({
                 <div className="pointer-events-none absolute inset-0 bg-white/25 dark:bg-black/10" />
                 <div className="relative z-10 flex items-center gap-3 w-full">
                   <svg
-                    className="h-5 w-5 shrink-0 cursor-move text-slate-700/80 dark:text-white/80"
+                    className={[
+                      "h-5 w-5 shrink-0 text-slate-700/80 dark:text-white/80",
+                      isMandatory ? "cursor-not-allowed opacity-50" : "cursor-move",
+                    ].join(" ")}
                     fill="none"
                     viewBox="0 0 24 24"
                     stroke="currentColor"
@@ -149,7 +171,7 @@ export default function RequestStatusesUI({
                     {i + 1}
                   </div>
 
-                {editingKey === s._key ? (
+                {editingKey === s._key && !isMandatory ? (
                   <input
                     autoFocus
                     type="text"
@@ -166,24 +188,35 @@ export default function RequestStatusesUI({
                 ) : (
                   <span
                     onClick={(e) => { e.stopPropagation(); startEdit(s._key, s.name); }}
-                    title="Click to rename"
-                    className="flex-1 min-w-0 cursor-pointer truncate rounded-xl px-3 py-2 text-sm font-semibold text-slate-900 transition dark:text-white"
+                    title={isMandatory ? "Mandatory status" : "Click to rename"}
+                    className={[
+                      "flex-1 min-w-0 truncate rounded-xl px-3 py-2 text-sm font-semibold text-slate-900 transition dark:text-white",
+                      isMandatory ? "cursor-default" : "cursor-pointer",
+                    ].join(" ")}
                   >
                     {s.name}
                   </span>
                 )}
 
-                <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); remove(s._key); }}
-                  disabled={statuses.length <= 1}
-                  className="shrink-0 rounded-xl border border-slate-200 bg-white p-2 text-slate-500 shadow-sm transition hover:border-red-300 hover:bg-red-50 hover:text-red-600 disabled:opacity-20"
-                  title="Remove"
-                >
-                  <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                  </svg>
-                </button>
+                {isMandatory && (
+                  <span className="shrink-0 rounded-full border border-slate-300 bg-white/80 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+                    Mandatory
+                  </span>
+                )}
+
+                {!isMandatory && (
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); remove(s._key); }}
+                    disabled={statuses.length <= 1}
+                    className="shrink-0 rounded-xl border border-slate-200 bg-white p-2 text-slate-500 shadow-sm transition hover:border-red-300 hover:bg-red-50 hover:text-red-600 disabled:opacity-20"
+                    title="Remove"
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
+                )}
                 </div>
               </div>
             );
@@ -224,9 +257,16 @@ export default function RequestStatusesUI({
             <button
               type="button"
               onClick={reset}
-              className="rounded-xl border border-slate-200 bg-white px-8 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
+              className="rounded-xl border border-slate-200 bg-white px-6 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
             >
               Reset
+            </button>
+            <button
+              type="button"
+              onClick={restoreAppDefaults}
+              className="rounded-xl border border-slate-200 bg-white px-6 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
+            >
+              App Defaults
             </button>
             <button
               type="button"

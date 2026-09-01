@@ -36,7 +36,12 @@ export default async function AuditRequestsPage({
         statusName: true,
         auditId: true,
         requestStatus: { select: { color: true, order: true } },
-        assignees: { select: { userId: true } },
+        assignees: {
+          select: {
+            userId: true,
+            user: { select: { name: true, email: true } },
+          },
+        },
         estimatedDeliveryDate: true,
       },
     }),
@@ -71,6 +76,10 @@ export default async function AuditRequestsPage({
     statusOrder: r.requestStatus?.order ?? 999,
     auditId: r.auditId,
     assigneeIds: r.assignees.map((a) => a.userId),
+    assignees: r.assignees.map((a) => ({
+      id: a.userId,
+      name: a.user?.name?.trim() || a.user?.email || "Unknown User",
+    })),
     estimatedDeliveryDate: r.estimatedDeliveryDate ? r.estimatedDeliveryDate.toISOString().split("T")[0]! : null,
   }));
 

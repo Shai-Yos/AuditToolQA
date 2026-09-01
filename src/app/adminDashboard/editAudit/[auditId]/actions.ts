@@ -7,6 +7,7 @@ import { logActivity } from "@/server/helpers/logActivity";
 import { redirect } from "next/navigation";
 import { createCalendarEvent, updateCalendarEvent, cancelCalendarEvent, buildEventBody } from "@/server/lib/outlookCalendar";
 import { emitAuditEvent, emitGlobalEvent } from "@/server/lib/event-bus";
+import { validateMandatoryRequestStatuses } from "@/lib/request-status-rules";
 
 type State = { ok: true; saved?: boolean } | { ok: false; error: string };
 
@@ -98,6 +99,10 @@ export async function updateAudit(
     }
 
     const statusColumns: StatusColumnInput[] = JSON.parse(statusColumnsJson);
+    const statusValidation = validateMandatoryRequestStatuses(statusColumns);
+    if (!statusValidation.ok) {
+      return { ok: false, error: statusValidation.error };
+    }
 
     // Collect unique user IDs from roomRolesJson
     let assignedUserIds: string[] = [];

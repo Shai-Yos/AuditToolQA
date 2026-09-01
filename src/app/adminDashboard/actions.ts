@@ -7,6 +7,7 @@ import { logActivity } from "@/server/helpers/logActivity";
 import { buildUserRolesFromJson, extractUserIdsFromJson } from "@/server/lib/roomRoles";
 import { createCalendarEvent, deleteCalendarEvent, buildEventBody } from "@/server/lib/outlookCalendar";
 import { emitGlobalEvent } from "@/server/lib/event-bus";
+import { validateMandatoryRequestStatuses } from "@/lib/request-status-rules";
 
 type CreateAuditState =
   | { ok: true }
@@ -81,6 +82,11 @@ export async function createAudit(
       statusColumns = JSON.parse(statusColumnsJson);
     } catch (e) {
       return { ok: false, error: "Invalid data format" };
+    }
+
+    const statusValidation = validateMandatoryRequestStatuses(statusColumns);
+    if (!statusValidation.ok) {
+      return { ok: false, error: statusValidation.error };
     }
 
     // Collect unique user IDs and role labels from roomRolesJson

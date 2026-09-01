@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useEffect, useCallback } from "react";
+import { useMemo, useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAuditStreamEvent } from "@/components/audit-nav-context";
 import {
@@ -43,6 +43,128 @@ const statusColors = [
   { name: "Lime", value: "#84cc16", bg: "bg-lime-200" },
 ];
 
+function MultiSelectFilterDropdown({
+  selected,
+  onSelectedChange,
+  options,
+  title,
+  emptyLabel,
+  clearLabel,
+}: {
+  selected: string[];
+  onSelectedChange: (values: string[]) => void;
+  options: { value: string; label: string }[];
+  title: string;
+  emptyLabel: string;
+  clearLabel: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState({ top: 0, left: 0, width: 288 });
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const ref = useRef<HTMLDivElement>(null);
+  const active = selected.length > 0;
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  function toggleMenu(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect();
+      const width = Math.min(288, window.innerWidth - 16);
+      const margin = 8;
+      const maxLeft = Math.max(margin, window.innerWidth - width - margin);
+      const left = Math.min(Math.max(r.left, margin), maxLeft);
+      setPos({ top: r.bottom + 4, left, width });
+    }
+    setOpen((v) => !v);
+  }
+
+  function toggleValue(value: string) {
+    onSelectedChange(selected.includes(value) ? selected.filter((x) => x !== value) : [...selected, value]);
+  }
+
+  return (
+    <div ref={ref} className="relative inline-block">
+      <button
+        ref={btnRef}
+        type="button"
+        onClick={toggleMenu}
+        className={[
+          "rounded p-0.5 transition",
+          active ? "text-blue-600" : "text-slate-400 hover:text-slate-700",
+        ].join(" ")}
+        title={title}
+      >
+        <svg className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
+          <path fillRule="evenodd" d="M2.628 1.601C5.028 1.206 7.49 1 10 1s4.973.206 7.372.601a.75.75 0 01.628.74v2.288a2.25 2.25 0 01-.659 1.59l-4.682 4.683a2.25 2.25 0 00-.659 1.59v3.037c0 .684-.31 1.33-.844 1.757l-1.937 1.55A.75.75 0 018 18.25v-5.757a2.25 2.25 0 00-.659-1.591L2.659 6.22A2.25 2.25 0 012 4.629V2.34a.75.75 0 01.628-.74z" clipRule="evenodd" />
+        </svg>
+      </button>
+      {open && (
+        <div
+          className="fixed z-50 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg ring-1 ring-black/5"
+          style={{ top: pos.top, left: pos.left, width: pos.width }}
+        >
+          <ul className="max-h-64 overflow-y-auto p-1">
+            {options.length === 0 && <li className="px-3 py-2 text-xs text-slate-400">{emptyLabel}</li>}
+            {options.map((o) => {
+              const checked = selected.includes(o.value);
+              return (
+                <li key={o.value}>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleValue(o.value);
+                    }}
+                    className={[
+                      "flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium transition",
+                      checked ? "bg-slate-100 text-slate-900" : "text-slate-600 hover:bg-slate-50",
+                    ].join(" ")}
+                  >
+                    <span
+                      className={[
+                        "flex h-3.5 w-3.5 items-center justify-center rounded border",
+                        checked ? "border-blue-500 bg-blue-500" : "border-slate-300 bg-white",
+                      ].join(" ")}
+                    >
+                      {checked && (
+                        <svg className="h-2.5 w-2.5 text-white" viewBox="0 0 20 20" fill="currentColor">
+                          <path fillRule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clipRule="evenodd" />
+                        </svg>
+                      )}
+                    </span>
+                    <span className="whitespace-normal break-words text-left leading-5">{o.label}</span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+          {selected.length > 0 && (
+            <div className="border-t border-slate-100 p-1">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSelectedChange([]);
+                }}
+                className="flex w-full items-center rounded-lg px-3 py-1.5 text-xs font-medium text-slate-500 transition hover:bg-slate-50"
+              >
+                {clearLabel}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function KanbanBoardUI({
   audit,
   currentUser,
@@ -64,6 +186,7 @@ export default function KanbanBoardUI({
   const [query, setQuery] = useState("");
   const [filterAssigned, setFilterAssigned] = useState(false);
   const [filterCreated, setFilterCreated] = useState(false);
+  const [selectedAssigneeIds, setSelectedAssigneeIds] = useState<string[]>([]);
   const [showNewRequestModal, setShowNewRequestModal] = useState(false);
   const [mounted, setMounted] = useState(false);
 
@@ -169,19 +292,38 @@ export default function KanbanBoardUI({
 
   const activeDraggedRequest = activeId ? optimisticRequests.find((r) => r.id === activeId) : null;
 
+  const assigneeOptions = useMemo(() => {
+    const unique = new Map<string, string>();
+    for (const r of optimisticRequests) {
+      for (const a of r.assignees) {
+        if (!unique.has(a.id)) unique.set(a.id, a.name || "Unknown User");
+      }
+    }
+    return Array.from(unique.entries())
+      .map(([value, label]) => ({ value, label }))
+      .sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: "base" }));
+  }, [optimisticRequests]);
+
+  useEffect(() => {
+    const allowed = new Set(assigneeOptions.map((o) => o.value));
+    setSelectedAssigneeIds((prev) => prev.filter((id) => allowed.has(id)));
+  }, [assigneeOptions]);
+
   const filteredRequests = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q && !filterAssigned && !filterCreated) return optimisticRequests;
+    if (!q && !filterAssigned && !filterCreated && selectedAssigneeIds.length === 0) return optimisticRequests;
     return optimisticRequests.filter((r) => {
       const matchAssigned = !filterAssigned || r.assignees.some((a) => a.id === currentUser.id);
       const matchCreated = !filterCreated || r.creatorId === currentUser.id;
+      const matchAssignee = selectedAssigneeIds.length === 0 || r.assignees.some((a) => selectedAssigneeIds.includes(a.id));
       const key = (r.trackNumber ?? r.title).toLowerCase();
       const labels = r.labels.some((l) => l.toLowerCase().includes(q));
       const formalLabel = r.isFormal != null ? (r.isFormal ? "formal" : "informal") : "";
-      const matchQuery = !q || key.includes(q) || r.title.toLowerCase().includes(q) || labels || formalLabel.startsWith(q);
-      return matchAssigned && matchCreated && matchQuery;
+      const assigneeMatch = r.assignees.some((a) => a.name.toLowerCase().includes(q));
+      const matchQuery = !q || key.includes(q) || r.title.toLowerCase().includes(q) || labels || assigneeMatch || formalLabel.startsWith(q);
+      return matchAssigned && matchCreated && matchAssignee && matchQuery;
     });
-  }, [optimisticRequests, query, filterAssigned, filterCreated, currentUser.id]);
+  }, [optimisticRequests, query, filterAssigned, filterCreated, selectedAssigneeIds, currentUser.id]);
 
   const requestsByColumn = useMemo(() => {
     const map = new Map<string, RequestCard[]>();
@@ -248,8 +390,19 @@ export default function KanbanBoardUI({
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search by track #, title, or label..."
+              placeholder="Search by track #, title, label, or assignee..."
               className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-10 pr-4 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+            />
+          </div>
+          <div className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600">
+            Assigned To
+            <MultiSelectFilterDropdown
+              selected={selectedAssigneeIds}
+              onSelectedChange={setSelectedAssigneeIds}
+              options={assigneeOptions}
+              title="Filter by assignees"
+              emptyLabel="No assignees"
+              clearLabel="Clear assignee filter"
             />
           </div>
           <button

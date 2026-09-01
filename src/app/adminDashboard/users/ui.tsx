@@ -640,20 +640,26 @@ function AddMemberModal({
   );
 }
 
-function ColumnFilterDropdown<T extends string>({
-  value,
-  onChange,
+function MultiSelectFilterDropdown<T extends string>({
+  selected,
+  onSelectedChange,
   options,
+  title,
+  emptyLabel,
+  clearLabel,
 }: {
-  value: T;
-  onChange: (v: T) => void;
+  selected: T[];
+  onSelectedChange: (values: T[]) => void;
   options: { value: T; label: string }[];
+  title: string;
+  emptyLabel: string;
+  clearLabel: string;
 }) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState({ top: 0, left: 0 });
   const btnRef = useRef<HTMLButtonElement>(null);
   const ref = useRef<HTMLDivElement>(null);
-  const active = value !== (options[0]?.value ?? "");
+  const active = selected.length > 0;
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -672,6 +678,14 @@ function ColumnFilterDropdown<T extends string>({
     setOpen((v) => !v);
   }
 
+  function toggleValue(value: T) {
+    onSelectedChange(
+      selected.includes(value)
+        ? selected.filter((v) => v !== value)
+        : [...selected, value],
+    );
+  }
+
   return (
     <div ref={ref} className="relative inline-block">
       <button
@@ -684,7 +698,7 @@ function ColumnFilterDropdown<T extends string>({
             ? "text-blue-600 dark:text-blue-400"
             : "text-slate-400 hover:text-slate-700 dark:hover:text-slate-200",
         ].join(" ")}
-        title="Filter"
+        title={title}
       >
         <svg className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
           <path fillRule="evenodd" d="M2.628 1.601C5.028 1.206 7.49 1 10 1s4.973.206 7.372.601a.75.75 0 01.628.74v2.288a2.25 2.25 0 01-.659 1.59l-4.682 4.683a2.25 2.25 0 00-.659 1.59v3.037c0 .684-.31 1.33-.844 1.757l-1.937 1.55A.75.75 0 018 18.25v-5.757a2.25 2.25 0 00-.659-1.591L2.659 6.22A2.25 2.25 0 012 4.629V2.34a.75.75 0 01.628-.74z" clipRule="evenodd" />
@@ -695,28 +709,59 @@ function ColumnFilterDropdown<T extends string>({
           className="fixed z-50 min-w-[130px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg ring-1 ring-black/5 dark:bg-slate-800 dark:border-slate-700"
           style={{ top: pos.top, left: pos.left }}
         >
-          <ul className="flex flex-col p-1">
-            {options.map((o) => (
-              <li
-                key={o.value}
-                onClick={(e) => { e.stopPropagation(); onChange(o.value); setOpen(false); }}
-                className={[
-                  "flex cursor-pointer items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium transition",
-                  value === o.value
-                    ? "bg-slate-100 text-slate-900 dark:bg-slate-700 dark:text-white"
-                    : "text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-700",
-                ].join(" ")}
-              >
-                {value === o.value && (
-                  <svg className="h-3 w-3 shrink-0 text-blue-600" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clipRule="evenodd" />
-                  </svg>
-                )}
-                {value !== o.value && <span className="h-3 w-3 shrink-0" />}
-                {o.label}
-              </li>
-            ))}
+          <ul className="max-h-64 overflow-y-auto p-1">
+            {options.length === 0 && (
+              <li className="px-3 py-2 text-xs text-slate-400">{emptyLabel}</li>
+            )}
+            {options.map((o) => {
+              const checked = selected.includes(o.value);
+              return (
+                <li key={o.value}>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleValue(o.value);
+                    }}
+                    className={[
+                      "flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium transition",
+                      checked
+                        ? "bg-slate-100 text-slate-900 dark:bg-slate-700 dark:text-white"
+                        : "text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-700",
+                    ].join(" ")}
+                  >
+                    <span
+                      className={[
+                        "flex h-3.5 w-3.5 items-center justify-center rounded border",
+                        checked ? "border-blue-500 bg-blue-500" : "border-slate-300 bg-white",
+                      ].join(" ")}
+                    >
+                      {checked && (
+                        <svg className="h-2.5 w-2.5 text-white" viewBox="0 0 20 20" fill="currentColor">
+                          <path fillRule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clipRule="evenodd" />
+                        </svg>
+                      )}
+                    </span>
+                    {o.label}
+                  </button>
+                </li>
+              );
+            })}
           </ul>
+          {selected.length > 0 && (
+            <div className="border-t border-slate-100 p-1 dark:border-slate-700">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSelectedChange([]);
+                }}
+                className="flex w-full items-center rounded-lg px-3 py-1.5 text-xs font-medium text-slate-500 transition hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-700"
+              >
+                {clearLabel}
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -726,8 +771,8 @@ function ColumnFilterDropdown<T extends string>({
 export default function UsersClient({ users }: { users: UserRow[] }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
-  const [roleFilter, setRoleFilter] = useState<string>("All");
-  const [statusFilter, setStatusFilter] = useState<"All" | "active" | "inactive">("All");
+  const [selectedRoles, setSelectedRoles] = useState<AppRole[]>([]);
+  const [selectedStatuses, setSelectedStatuses] = useState<Array<"active" | "inactive">>([]);
   const [modalRole, setModalRole] = useState<AppRole | null>(null);
   const [pollingIds, setPollingIds] = useState<Set<string>>(new Set());
   const [sortKey, setSortKey] = useState<"name" | "email" | "role" | "assignedAudits" | "isActive" | "createdAt">("createdAt");
@@ -745,10 +790,9 @@ export default function UsersClient({ users }: { users: UserRow[] }) {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     const list = users.filter((u) => {
-      const matchRole = roleFilter === "All" || u.role === roleFilter;
-      const matchStatus =
-        statusFilter === "All" ||
-        (statusFilter === "active" ? u.isActive : !u.isActive);
+      const matchRole = selectedRoles.length === 0 || selectedRoles.includes(u.role as AppRole);
+      const userStatus = u.isActive ? "active" : "inactive";
+      const matchStatus = selectedStatuses.length === 0 || selectedStatuses.includes(userStatus);
       const matchQuery =
         !q ||
         u.name.toLowerCase().includes(q) ||
@@ -770,7 +814,7 @@ export default function UsersClient({ users }: { users: UserRow[] }) {
     });
 
     return list;
-  }, [users, query, roleFilter, statusFilter, sortKey, sortDir]);
+  }, [users, query, selectedRoles, selectedStatuses, sortKey, sortDir]);
 
   const adminCount = users.filter((u) => u.role === "ADMIN").length;
   const auditOwnerCount = users.filter((u) => u.role === "AUDIT_OWNER").length;
@@ -790,7 +834,7 @@ export default function UsersClient({ users }: { users: UserRow[] }) {
 
           <button
             type="button"
-            onClick={() => setModalRole(roleFilter === "All" ? "USER" : (roleFilter as AppRole))}
+            onClick={() => setModalRole(selectedRoles.length === 1 ? selectedRoles[0]! : "USER")}
             className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-6 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 active:scale-[0.99] focus:outline-none focus:ring-4 focus:ring-slate-200"
           >
             <span className="text-lg leading-none">+</span>
@@ -877,26 +921,30 @@ export default function UsersClient({ users }: { users: UserRow[] }) {
                         {sortKey === key ? (sortDir === "asc" ? "▲" : "▼") : "↕"}
                       </span>
                       {filterable && key === "role" && (
-                        <ColumnFilterDropdown<string>
-                          value={roleFilter}
-                          onChange={setRoleFilter}
+                        <MultiSelectFilterDropdown<AppRole>
+                          selected={selectedRoles}
+                          onSelectedChange={setSelectedRoles}
                           options={[
-                            { value: "All",         label: "All roles" },
                             { value: "ADMIN",       label: "Admin" },
                             { value: "AUDIT_OWNER", label: "Audit Owner" },
                             { value: "USER",        label: "User" },
                           ]}
+                          title="Filter by roles"
+                          emptyLabel="No roles"
+                          clearLabel="Clear role filter"
                         />
                       )}
                       {filterable && key === "isActive" && (
-                        <ColumnFilterDropdown<"All" | "active" | "inactive">
-                          value={statusFilter}
-                          onChange={setStatusFilter}
+                        <MultiSelectFilterDropdown<"active" | "inactive">
+                          selected={selectedStatuses}
+                          onSelectedChange={setSelectedStatuses}
                           options={[
-                            { value: "All",      label: "All statuses" },
                             { value: "active",   label: "Active" },
                             { value: "inactive", label: "Inactive" },
                           ]}
+                          title="Filter by statuses"
+                          emptyLabel="No statuses"
+                          clearLabel="Clear status filter"
                         />
                       )}
                     </span>
@@ -963,7 +1011,7 @@ export default function UsersClient({ users }: { users: UserRow[] }) {
 
         {/* Result count */}
         <p className="mt-3 text-center text-xs text-slate-400">
-          {query || roleFilter !== "All"
+          {query || selectedRoles.length > 0 || selectedStatuses.length > 0
             ? `Showing ${filtered.length} of ${users.length} registered user${users.length !== 1 ? "s" : ""}`
             : `${users.length} registered user${users.length !== 1 ? "s" : ""}`}
         </p>

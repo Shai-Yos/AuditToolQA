@@ -28,6 +28,7 @@ export default async function Page() {
   return (
     <RequestStatusesUI
       defaultStatuses={defaultStatuses}
+      appDefaultStatuses={HARDCODED_DEFAULTS}
       saveDefaultStatuses={saveDefaultStatuses}
     />
   );
