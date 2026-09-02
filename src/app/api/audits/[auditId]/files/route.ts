@@ -113,7 +113,9 @@ export async function POST(
   });
   if (!audit) return NextResponse.json({ error: "Audit not found" }, { status: 404 });
 
-  const auditFolderName = audit.trackId ? `${audit.trackId} ${audit.title}` : audit.title; // exact name as it exists on OneDrive
+  // Keep folder naming consistent with createAudit action.
+  const rawAuditFolderName = audit.trackId ? `${audit.trackId} ${audit.title}` : audit.title;
+  const auditFolderName = rawAuditFolderName.replace(/[^a-zA-Z0-9._\- ]/g, "_");
   const auditSlug = slugify(auditFolderName, auditId); // kept for local fallback paths
   const slotFolder = slotFolderName(slot as Slot);
 
@@ -305,7 +307,8 @@ export async function DELETE(
     await deleteOneDriveFile(drivePath); // OneDrive DELETE works recursively
 
     if (audit) {
-      const auditFolderName2 = audit.trackId ? `${audit.trackId} ${audit.title}` : audit.title;
+      const rawAuditFolderName2 = audit.trackId ? `${audit.trackId} ${audit.title}` : audit.title;
+      const auditFolderName2 = rawAuditFolderName2.replace(/[^a-zA-Z0-9._\- ]/g, "_");
       const auditSlug = slugify(auditFolderName2, auditId);
       const slotFolder = slotFolderName(slot);
       const localFolder = join(

@@ -30,13 +30,14 @@ export async function POST(
     return NextResponse.json({ error: "No valid email addresses provided" }, { status: 400 });
   }
 
-  const audit = await db.audit.findUnique({ where: { id: auditId }, select: { title: true } });
+  const audit = await db.audit.findUnique({ where: { id: auditId }, select: { title: true, trackId: true } });
   if (!audit) {
     return NextResponse.json({ error: "Audit not found" }, { status: 404 });
   }
 
-  const safeTitle = audit.title.replace(/[^a-zA-Z0-9._\- ]/g, "_");
-  const drivePath = `/AuditTool/Audits/${safeTitle}/Auditors`;
+  const rawAuditFolderName = audit.trackId ? `${audit.trackId} ${audit.title}` : audit.title;
+  const safeAuditFolderName = rawAuditFolderName.replace(/[^a-zA-Z0-9._\- ]/g, "_");
+  const drivePath = `/AuditTool/Audits/${safeAuditFolderName}/Auditors`;
 
   const message = typeof body.message === "string" && body.message.trim()
     ? body.message.trim()
