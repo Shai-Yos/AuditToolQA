@@ -19,13 +19,33 @@ import {
 import { RoomAssigner, CalendarDateRangePicker, StepIcon } from "@/components/audit-form/audit-form-components";
 import { isMandatoryRequestStatus } from "@/lib/request-status-rules";
 
-function formatDateForInput(date: Date | null): string {
+function formatDateForInput(date: Date | null, timezone: string): string {
   if (!date) return "";
   const d = new Date(date);
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone || "UTC",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(d);
+  const year = parts.find((p) => p.type === "year")?.value ?? "";
+  const month = parts.find((p) => p.type === "month")?.value ?? "";
+  const day = parts.find((p) => p.type === "day")?.value ?? "";
   return `${year}-${month}-${day}`;
+}
+
+function formatTimeForInput(date: Date | null, timezone: string, fallback: string): string {
+  if (!date) return fallback;
+  const d = new Date(date);
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: timezone || "UTC",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(d);
+  const hour = parts.find((p) => p.type === "hour")?.value;
+  const minute = parts.find((p) => p.type === "minute")?.value;
+  return hour && minute ? `${hour}:${minute}` : fallback;
 }
 
 type AuditData = {
@@ -188,17 +208,13 @@ export default function EditAuditForm({ audit, currentUserName }: { audit: Audit
     audit.status
   );
 
-  const [startDate, setStartDate] = useState(formatDateForInput(audit.startAt));
-  const [endDate, setEndDate] = useState(formatDateForInput(audit.endAt));
+  const [startDate, setStartDate] = useState(formatDateForInput(audit.startAt, audit.timezone || "UTC"));
+  const [endDate, setEndDate] = useState(formatDateForInput(audit.endAt, audit.timezone || "UTC"));
   const [startTime, setStartTime] = useState(() => {
-    if (!audit.startAt) return "08:00";
-    const d = new Date(audit.startAt);
-    return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+    return formatTimeForInput(audit.startAt, audit.timezone || "UTC", "08:00");
   });
   const [endTime, setEndTime] = useState(() => {
-    if (!audit.endAt) return "17:00";
-    const d = new Date(audit.endAt);
-    return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+    return formatTimeForInput(audit.endAt, audit.timezone || "UTC", "17:00");
   });
   const [timezone, setTimezone] = useState(audit.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone);
 

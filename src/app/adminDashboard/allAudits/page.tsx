@@ -53,6 +53,7 @@ export default async function AllAuditsPage() {
       status,
       startDate: a.startAt?.toISOString() ?? a.createdAt.toISOString(),
       endDate: a.endAt?.toISOString() ?? null,
+      timezone: a.timezone ?? undefined,
       roomsCount,
       usersCount: a.users.length,
       requestsCount: a._count.requests,

@@ -21,6 +21,7 @@ export type AuditCardData = {
   status?: "Draft" | "Active" | "Completed" | "Archived";
   startDate: string;
   endDate?: string | null;
+  timezone?: string;
   roomsCount: number;
   usersCount: number;
   requestsCount: number;
@@ -276,15 +277,24 @@ export function AuditCard({
     hour12: false,
     timeZone: "UTC",
   };
-  const startDate = new Date(audit.startDate);
-  const startLabel = startDate.toLocaleDateString("en-GB", fmtOpts);
+
+  const formatDateUtc = (value: string) => {
+    const date = new Date(value);
+    try {
+      return `${date.toLocaleString("en-GB", fmtOpts)} UTC`;
+    } catch {
+      return `${date.toLocaleString("en-GB", { ...fmtOpts, timeZone: "UTC" })} UTC`;
+    }
+  };
+
+  const startLabel = formatDateUtc(audit.startDate);
   const endLabel = audit.endDate
-    ? new Date(audit.endDate).toLocaleDateString("en-GB", fmtOpts)
+    ? formatDateUtc(audit.endDate)
     : "Present";
   const dateRange =
-    (audit.startDate === audit.endDate
+    (startLabel === endLabel
       ? startLabel
-      : `${startLabel} – ${endLabel}`) + " (UTC)";
+      : `${startLabel} → ${endLabel}`);
 
   // ── Badges ───────────────────────────────────────────────────────────────
   const statusBadge = (() => {

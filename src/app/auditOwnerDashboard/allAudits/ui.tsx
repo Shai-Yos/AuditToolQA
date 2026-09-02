@@ -13,6 +13,7 @@ type AuditCardVM = {
   status: "Draft" | "Active" | "Completed" | "Archived";
   startDate: string;
   endDate?: string | null;
+  timezone?: string;
   roomsCount: number;
   usersCount: number;
   requestsCount: number;

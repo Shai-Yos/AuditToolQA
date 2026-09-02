@@ -21,6 +21,17 @@ import {
 import { RoomAssigner, CalendarDateRangePicker, StepIcon } from "@/components/audit-form/audit-form-components";
 import { isMandatoryRequestStatus } from "@/lib/request-status-rules";
 
+function formatDateOnlyLabel(dateStr: string) {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  if (!y || !m || !d) return "";
+  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
+
 export default function CreateAuditForm({
   defaultStatuses,
 }: {
@@ -959,12 +970,12 @@ export default function CreateAuditForm({
 
                   <div className="mt-4 text-sm text-slate-700">
                     <span className="font-semibold text-slate-900">
-                      {startDate ? `${new Date(startDate + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" })} UTC` : "—"}
+                      {startDate ? formatDateOnlyLabel(startDate) : "—"}
                     </span>
                     {" "}<span className="font-semibold text-slate-900">{startTime}</span>
                     {" → "}
                     <span className="font-semibold text-slate-900">
-                      {endDate ? `${new Date(endDate + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" })} UTC` : "—"}
+                      {endDate ? formatDateOnlyLabel(endDate) : "—"}
                     </span>
                     {" "}<span className="font-semibold text-slate-900">{endTime}</span>
                     {" · "}

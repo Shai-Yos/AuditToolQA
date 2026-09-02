@@ -370,16 +370,24 @@ export function CalendarDateRangePicker({
     }
   }, [isOpen]);
 
+  const parseDateOnlyAsUtc = (value: string) => {
+    const [y, m, d] = value.split("-").map(Number);
+    if (!y || !m || !d) return null;
+    return new Date(Date.UTC(y, m - 1, d, 0, 0, 0));
+  };
+
   const formatDateDisplay = (dateStr: string) => {
     if (!dateStr) return "";
-    const date = new Date(dateStr + "T00:00:00");
-    return `${date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })} UTC`;
+    const date = parseDateOnlyAsUtc(dateStr);
+    if (!date) return "";
+    return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
   };
 
   const getDuration = () => {
     if (!startDate || !endDate) return "";
-    const start = new Date(startDate + "T00:00:00");
-    const end = new Date(endDate + "T00:00:00");
+    const start = parseDateOnlyAsUtc(startDate);
+    const end = parseDateOnlyAsUtc(endDate);
+    if (!start || !end) return "";
     const days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
     return days >= 0 ? `${days + 1} day${days !== 0 ? "s" : ""}` : "";
   };
@@ -436,10 +444,7 @@ export function CalendarDateRangePicker({
       onStartChange(dateStr);
       onEndChange("");
     } else {
-      const start = new Date(startDate + "T00:00:00");
-      const clicked = new Date(dateStr + "T00:00:00");
-
-      if (clicked < start) {
+      if (dateStr < startDate) {
         onStartChange(dateStr);
         onEndChange(startDate);
       } else {
@@ -450,17 +455,13 @@ export function CalendarDateRangePicker({
 
   const isDateInRange = (dateStr: string) => {
     if (!startDate) return false;
-    const date = new Date(dateStr + "T00:00:00");
-    const start = new Date(startDate + "T00:00:00");
 
     if (endDate) {
-      const end = new Date(endDate + "T00:00:00");
-      return date >= start && date <= end;
+      return dateStr >= startDate && dateStr <= endDate;
     } else if (hoverDate) {
-      const hover = new Date(hoverDate + "T00:00:00");
-      const rangeStart = hover < start ? hover : start;
-      const rangeEnd = hover < start ? start : hover;
-      return date >= rangeStart && date <= rangeEnd;
+      const rangeStart = hoverDate < startDate ? hoverDate : startDate;
+      const rangeEnd = hoverDate < startDate ? startDate : hoverDate;
+      return dateStr >= rangeStart && dateStr <= rangeEnd;
     }
     return false;
   };
@@ -666,7 +667,7 @@ export function CalendarDateRangePicker({
               const inRange = isDateInRange(dateStr);
               const isStart = isDateStart(dateStr);
               const isEnd = isDateEnd(dateStr);
-              const isToday = dateStr === new Date().toISOString().split("T")[0];
+              const isToday = dateStr === todayLocal;
               const isPast = isPastDate(dateStr);
 
               return (

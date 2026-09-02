@@ -51,6 +51,7 @@ export default async function AllAuditsOwnerPage() {
       | "Archived",
     startDate: a.startAt?.toISOString() ?? a.createdAt.toISOString(),
     endDate: a.endAt?.toISOString() ?? null,
+    timezone: a.timezone ?? undefined,
     roomsCount: Math.max(a.frontRoomsCount, a.backRoomsCount),
     usersCount: a.users.length,
     requestsCount: a.requests.length,
