@@ -37,20 +37,27 @@ export async function POST(
     // Build folder path: /AuditTool/Audits/[Audit name]/Requests/[Request name]/[file]
     const slugify = (s: string, fallback: string) =>
       s.trim().replace(/[\/\\:*?"<>|]/g, "_").substring(0, 100) || fallback;
+    const sanitizeFolderName = (s: string) => {
+      // Keep human-readable separators by normalizing unicode dashes to '-'.
+      const normalized = s.normalize("NFKC").replace(/[‐‑‒–—―]/g, "-");
+      return normalized.replace(/[^a-zA-Z0-9._\- ]/g, "_").trim();
+    };
 
-    let auditTitle = "Unknown Audit";
+    let auditFolderName = "Unknown Audit";
     let auditSlug = "Unknown Audit";
     if (auditId) {
       const audit = await db.audit.findUnique({
         where: { id: auditId },
         select: { title: true, trackId: true },
       });
-      auditTitle = audit?.trackId ? `${audit.trackId} ${audit.title}` : (audit?.title ?? auditId);
-      auditSlug = slugify(auditTitle, auditId);
+      const rawAuditFolderName = audit?.trackId ? `${audit.trackId} ${audit.title}` : (audit?.title ?? auditId);
+      auditFolderName = sanitizeFolderName(rawAuditFolderName) || auditId;
+      auditSlug = slugify(auditFolderName, auditId);
     }
 
-    const requestTitle = existingRequest.trackNumber ?? existingRequest.title ?? requestId;
-    const requestSlug = slugify(requestTitle, requestId);
+    const rawRequestFolderName = existingRequest.trackNumber ?? existingRequest.title ?? requestId;
+    const requestFolderName = sanitizeFolderName(rawRequestFolderName) || requestId;
+    const requestSlug = slugify(requestFolderName, requestId);
     const localDir = join(process.cwd(), "public", "uploads", "Audits", auditSlug, "Requests", requestSlug);
 
     // Process each file
@@ -61,8 +68,8 @@ export async function POST(
       const sanitizedFilename = file.name.replace(/[\/\\:*?"<>|]/g, "_");
       const filename = sanitizedFilename;
 
-      // Upload to OneDrive: /AuditTool/Audits/[Audit name]/Requests/[Request name]/[file]
-      const relativePath = `Audits/${auditTitle}/Requests/${requestTitle}/${filename}`;
+      // Upload to OneDrive using the same sanitized naming convention as created folders.
+      const relativePath = `Audits/${auditFolderName}/Requests/${requestFolderName}/${filename}`;
       const apiUrlPath = `/api/uploads/Audits/${auditSlug}/Requests/${requestSlug}/${filename}`;
 
       const result = await uploadFile(buffer, relativePath, localDir, filename, apiUrlPath);
