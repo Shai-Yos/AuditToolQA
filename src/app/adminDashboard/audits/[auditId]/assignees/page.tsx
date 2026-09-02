@@ -44,8 +44,8 @@ export default async function Page({
   if (audit.roomRolesJson) {
     try {
       const parsed = JSON.parse(audit.roomRolesJson) as {
-        fr?: Array<{ frIndex: number; leadUserIds: string[]; qmUserIds: string[]; smeUserIds?: string[]; transcriptionUserIds: string[] }>;
-        br?: Array<{ brIndex: number; leadUserIds: string[]; callerUserIds: string[]; qmUserIds?: string[]; qualityReviewerUserIds: string[]; smePrepUserIds?: string[]; outgoingUserIds: string[]; incomingUserIds: string[]; recordsPrepUserIds: string[] }>;
+        fr?: Array<{ frIndex: number; leadUserIds: string[]; qmUserIds: string[]; smeUserIds?: string[]; transcriptionUserIds: string[]; customRoles?: Array<{ name: string; userIds: string[] }> }>;
+        br?: Array<{ brIndex: number; leadUserIds: string[]; callerUserIds: string[]; qmUserIds?: string[]; qualityReviewerUserIds: string[]; smePrepUserIds?: string[]; outgoingUserIds: string[]; incomingUserIds: string[]; recordsPrepUserIds: string[]; customRoles?: Array<{ name: string; userIds: string[] }> }>;
       };
 
       const addEntry = (userId: string, role: string) => {
@@ -60,6 +60,9 @@ export default async function Page({
         fr.qmUserIds?.forEach((id) => addEntry(id, `${prefix} QM`));
         fr.smeUserIds?.forEach((id) => addEntry(id, `${prefix} SME`));
         fr.transcriptionUserIds?.forEach((id) => addEntry(id, `${prefix} Transcriptionist`));
+        for (const cr of fr.customRoles ?? []) {
+          cr.userIds?.forEach((id) => addEntry(id, `${prefix} ${cr.name}`));
+        }
       }
       for (const br of parsed.br ?? []) {
         const prefix = `BR${br.brIndex}`;
@@ -71,6 +74,9 @@ export default async function Page({
         br.outgoingUserIds?.forEach((id) => addEntry(id, `${prefix} Outgoing`));
         br.incomingUserIds?.forEach((id) => addEntry(id, `${prefix} Incoming`));
         br.recordsPrepUserIds?.forEach((id) => addEntry(id, `${prefix} Records Prep`));
+        for (const cr of br.customRoles ?? []) {
+          cr.userIds?.forEach((id) => addEntry(id, `${prefix} ${cr.name}`));
+        }
       }
     } catch {
       // fallback below

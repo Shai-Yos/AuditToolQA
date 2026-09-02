@@ -8,7 +8,28 @@ import { NewRequestModal } from "@/components/new-request-modal";
 
 type User = { id: string; name: string; roles: string[]; image?: string | null };
 
+function isBuiltInRoleLabel(roleLabel: string) {
+  const label = roleLabel.replace(/^(FR\d+|BR\d+)\s+/i, "").trim().toLowerCase();
+  return new Set([
+    "lead",
+    "qm",
+    "sme",
+    "transcription",
+    "transcriptionist",
+    "caller",
+    "quality reviewer",
+    "sme prep",
+    "outgoing",
+    "incoming",
+    "records prep",
+  ]).has(label);
+}
+
 function getRoleBadgeClass(isFR: boolean, roleLabel: string) {
+  if (!isBuiltInRoleLabel(roleLabel)) {
+    return "bg-amber-100 text-amber-800 border border-amber-200";
+  }
+
   const r = roleLabel.toLowerCase();
   if (isFR) {
     if (r.includes("lead")) return "bg-blue-100 text-blue-800 border border-blue-200";

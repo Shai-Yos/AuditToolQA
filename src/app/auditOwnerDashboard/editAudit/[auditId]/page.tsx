@@ -31,8 +31,8 @@ export default async function AuditOwnerEditAuditPage({
   if (audit.createdById !== currentUser.id) redirect("/auditOwnerDashboard");
   if (audit.status === "COMPLETED") redirect("/auditOwnerDashboard");
 
-  type FRRoleInit = { frIndex: number; leadUserIds: string[]; qmUserIds: string[]; smeUserIds?: string[]; transcriptionUserIds: string[] };
-  type BRRoleInit = { brIndex: number; leadUserIds: string[]; callerUserIds: string[]; qmUserIds: string[]; qualityReviewerUserIds: string[]; smePrepUserIds: string[]; outgoingUserIds: string[]; incomingUserIds: string[]; recordsPrepUserIds: string[]; connectedFrIndices: number[] };
+  type FRRoleInit = { frIndex: number; leadUserIds: string[]; qmUserIds: string[]; smeUserIds?: string[]; transcriptionUserIds: string[]; customRoles?: Array<{ name: string; userIds: string[] }> };
+  type BRRoleInit = { brIndex: number; leadUserIds: string[]; callerUserIds: string[]; qmUserIds: string[]; qualityReviewerUserIds: string[]; smePrepUserIds: string[]; outgoingUserIds: string[]; incomingUserIds: string[]; recordsPrepUserIds: string[]; connectedFrIndices: number[]; customRoles?: Array<{ name: string; userIds: string[] }> };
 
   const roleUserIds = new Set<string>();
   let initialFrRoles: FRRoleInit[] = [];
@@ -49,11 +49,20 @@ export default async function AuditOwnerEditAuditPage({
       const qmUserIds: string[] = Array.isArray(found?.qmUserIds) ? found.qmUserIds : [];
       const smeUserIds: string[] = Array.isArray(found?.smeUserIds) ? found.smeUserIds : [];
       const transcriptionUserIds: string[] = Array.isArray(found?.transcriptionUserIds) ? found.transcriptionUserIds : [];
+      const customRoles: Array<{ name: string; userIds: string[] }> = Array.isArray(found?.customRoles)
+        ? found.customRoles
+            .filter((cr: any) => typeof cr?.name === "string" && Array.isArray(cr?.userIds))
+            .map((cr: any) => ({
+              name: String(cr.name),
+              userIds: cr.userIds.filter((id: any) => typeof id === "string"),
+            }))
+        : [];
       leadUserIds.forEach((id) => roleUserIds.add(id));
       qmUserIds.forEach((id) => roleUserIds.add(id));
       smeUserIds.forEach((id) => roleUserIds.add(id));
       transcriptionUserIds.forEach((id) => roleUserIds.add(id));
-      return { frIndex: i + 1, leadUserIds, qmUserIds, smeUserIds, transcriptionUserIds };
+      customRoles.forEach((cr) => cr.userIds.forEach((id) => roleUserIds.add(id)));
+      return { frIndex: i + 1, leadUserIds, qmUserIds, smeUserIds, transcriptionUserIds, customRoles };
     });
 
     initialBrRoles = Array.from({ length: audit.backRoomsCount }, (_, i) => {
@@ -67,9 +76,18 @@ export default async function AuditOwnerEditAuditPage({
       const incomingUserIds: string[] = Array.isArray(found?.incomingUserIds) ? found.incomingUserIds : [];
       const recordsPrepUserIds: string[] = Array.isArray(found?.recordsPrepUserIds) ? found.recordsPrepUserIds : [];
       const connectedFrIndices: number[] = Array.isArray(found?.connectedFrIndices) ? found.connectedFrIndices : [];
+      const customRoles: Array<{ name: string; userIds: string[] }> = Array.isArray(found?.customRoles)
+        ? found.customRoles
+            .filter((cr: any) => typeof cr?.name === "string" && Array.isArray(cr?.userIds))
+            .map((cr: any) => ({
+              name: String(cr.name),
+              userIds: cr.userIds.filter((id: any) => typeof id === "string"),
+            }))
+        : [];
       [leadUserIds, callerUserIds, qmUserIds, qualityReviewerUserIds, smePrepUserIds, outgoingUserIds, incomingUserIds, recordsPrepUserIds]
         .flat().forEach((id) => roleUserIds.add(id));
-      return { brIndex: i + 1, leadUserIds, callerUserIds, qmUserIds, qualityReviewerUserIds, smePrepUserIds, outgoingUserIds, incomingUserIds, recordsPrepUserIds, connectedFrIndices };
+      customRoles.forEach((cr) => cr.userIds.forEach((id) => roleUserIds.add(id)));
+      return { brIndex: i + 1, leadUserIds, callerUserIds, qmUserIds, qualityReviewerUserIds, smePrepUserIds, outgoingUserIds, incomingUserIds, recordsPrepUserIds, connectedFrIndices, customRoles };
     });
   } catch {
     // malformed JSON — leave empty arrays
