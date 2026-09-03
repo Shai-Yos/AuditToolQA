@@ -16,9 +16,11 @@ const NEW_THRESHOLD_MS = 30_000; // highlight new chips for 30 s
 export function FrRequestsStrip({
   auditId,
   frIndex,
+  popout = false,
 }: {
   auditId: string;
   frIndex: number;
+  popout?: boolean;
 }) {
   const storageKey = `fr-strip-collapsed-${auditId}-${frIndex}`;
 
@@ -113,6 +115,20 @@ export function FrRequestsStrip({
       [fetchRequests],
     ),
   );
+
+  // Popout pages are outside AuditNavProvider, so subscribe directly here.
+  useEffect(() => {
+    if (!popout) return;
+
+    const es = new EventSource(`/api/audits/${auditId}/stream`);
+    es.onmessage = (event) => {
+      const data = event.data;
+      if (data === "requests" || data === "kanban") void fetchRequests();
+    };
+    return () => {
+      es.close();
+    };
+  }, [popout, auditId, fetchRequests]);
 
   const toggleCollapsed = () => {
     setCollapsed((v) => {

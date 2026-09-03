@@ -1226,7 +1226,7 @@ export function ChatPanel({
             /* ---- Rich-text transcription notepad ---- */
             <>
             {frIndex !== undefined && (
-              <FrRequestsStrip auditId={auditId} frIndex={frIndex} />
+              <FrRequestsStrip auditId={auditId} frIndex={frIndex} popout={!!popout} />
             )}
             <TranscriptionEditor
               content={text}

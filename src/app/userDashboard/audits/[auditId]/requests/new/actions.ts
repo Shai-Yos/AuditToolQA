@@ -5,6 +5,8 @@ import { requireUser } from "~/server/helpers/currentUser";
 import { logActivity } from "~/server/helpers/logActivity";
 import { syncNewRequestToPlanner } from "~/server/lib/planner";
 import { Prisma } from "generated/prisma";
+import { emitAuditEvent, emitAuditTabCounts, emitGlobalEvent } from "~/server/lib/event-bus";
+import { getAuditTabCounts } from "@/server/lib/audit-tab-counts";
 
 type State = { ok: true; redirectTo: string } | { ok: false; error: string };
 
@@ -163,6 +165,11 @@ export async function createRequest(_: State, input: FormData | CreateRequestInp
     },
     notifyUserIds: notifyIds,
   });
+
+  emitAuditEvent(auditId, "requests");
+  emitAuditTabCounts(auditId, await getAuditTabCounts(auditId));
+  emitAuditEvent(auditId, "kanban");
+  emitGlobalEvent("audits");
 
   const allowedTabs = new Set(["requests", "kanbanBoard", "chats", "assignees", "home"]);
   const safeTab = allowedTabs.has(returnTab) ? returnTab : "kanbanBoard";
