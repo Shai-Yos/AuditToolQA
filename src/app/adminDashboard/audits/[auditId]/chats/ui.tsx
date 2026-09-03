@@ -919,6 +919,29 @@ useEffect(() => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [streamEvent]);
 
+  // Popout windows are not wrapped by AuditNavProvider, so they need their
+  // own stream subscription to stay in sync with edits from the main page.
+  useEffect(() => {
+    if (!popout) return;
+
+    const es = new EventSource(`/api/audits/${auditId}/stream`);
+    es.onmessage = (event) => {
+      const data = event.data;
+      if (!data || data === "connected") return;
+      if (data === "chat") void fetchIncremental();
+      if (data === "typing") void fetchTyping();
+    };
+    es.onerror = () => {
+      liveStatusRef.current = "error";
+      setLiveStatus("error");
+    };
+
+    return () => {
+      es.close();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [popout, auditId, fetchIncremental, fetchTyping]);
+
   // Visibility change: re-fetch on tab focus
   useEffect(() => {
     const onVisible = () => { if (!document.hidden) void fetchIncremental(); };
