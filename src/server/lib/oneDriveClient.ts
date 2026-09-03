@@ -3,13 +3,11 @@
  * Uses the Azure AD app registration (client_credentials flow) to store files
  * in the CTAMI-Automations@philips.com OneDrive.
  *
- * Falls back to local disk storage if OneDrive credentials are not configured
- * or if the upload fails.
+ * Uses OneDrive as the single source of truth for stored files.
  */
 
 import { env } from "@/env";
-import { writeFile, mkdir, unlink, readFile, rm } from "fs/promises";
-import { join } from "path";
+import { unlink, readFile, rm } from "fs/promises";
 import { existsSync } from "fs";
 
 // ─── Token cache ───────────────────────────────────────────────────────────────
@@ -79,8 +77,8 @@ function buildDrivePath(relativePath: string): string {
 // ─── Upload ────────────────────────────────────────────────────────────────────
 
 export interface UploadResult {
-  /** "onedrive" or "local" */
-  storage: "onedrive" | "local";
+  /** storage backend */
+  storage: "onedrive";
   /** The URL to use for download (stored in DB) */
   url: string;
   /** OneDrive path (if stored in cloud) */
@@ -88,53 +86,39 @@ export interface UploadResult {
 }
 
 /**
- * Upload a file to OneDrive. Falls back to local disk on failure.
+ * Upload a file to OneDrive.
  *
  * @param buffer - File content
  * @param relativePath - Path relative to root, e.g. "auditSlug/requests/reqSlug/filename.pdf"
- * @param localDir - Local directory for fallback storage
- * @param localFilename - Filename for local fallback
- * @param apiUrlPath - The API URL path prefix for local serving, e.g. "/api/uploads/auditSlug/requests/reqSlug/filename.pdf"
+ * @param _localDir - Deprecated compatibility parameter (unused)
+ * @param _localFilename - Deprecated compatibility parameter (unused)
+ * @param _apiUrlPath - Deprecated compatibility parameter (unused)
  */
 export async function uploadFile(
   buffer: Buffer,
   relativePath: string,
-  localDir: string,
-  localFilename: string,
-  apiUrlPath: string,
+  _localDir: string,
+  _localFilename: string,
+  _apiUrlPath: string,
 ): Promise<UploadResult> {
-  // Try OneDrive first
-  if (isOneDriveConfigured()) {
-    try {
-      const drivePath = buildDrivePath(relativePath);
-      const token = await getOneDriveToken();
-
-      // For files <= 4MB, use simple upload. For larger files, use upload session.
-      if (buffer.length <= 4 * 1024 * 1024) {
-        await simpleUpload(token, drivePath, buffer);
-      } else {
-        await resumableUpload(token, drivePath, buffer);
-      }
-
-      return {
-        storage: "onedrive",
-        url: `onedrive:${drivePath}`,
-        drivePath,
-      };
-    } catch (error) {
-      console.error("[OneDrive] Upload failed, falling back to local:", error);
-    }
+  if (!isOneDriveConfigured()) {
+    throw new Error("OneDrive credentials not configured");
   }
 
-  // Fallback: save locally
-  if (!existsSync(localDir)) {
-    await mkdir(localDir, { recursive: true });
+  const drivePath = buildDrivePath(relativePath);
+  const token = await getOneDriveToken();
+
+  // For files <= 4MB, use simple upload. For larger files, use upload session.
+  if (buffer.length <= 4 * 1024 * 1024) {
+    await simpleUpload(token, drivePath, buffer);
+  } else {
+    await resumableUpload(token, drivePath, buffer);
   }
-  await writeFile(join(localDir, localFilename), buffer);
 
   return {
-    storage: "local",
-    url: apiUrlPath,
+    storage: "onedrive",
+    url: `onedrive:${drivePath}`,
+    drivePath,
   };
 }
 
@@ -359,42 +343,27 @@ export async function deleteLocalFolder(folderPath: string): Promise<boolean> {
 // ─── Folder helpers ────────────────────────────────────────────────────────────
 
 export interface CreateFolderResult {
-  storage: "onedrive" | "local";
+  storage: "onedrive";
   /** URL marker stored in DB for folder rows: always "folder:<drivePath>" */
   url: string;
 }
 
 /**
- * Create a folder on OneDrive (and locally as fallback). When OneDrive is
- * configured the folder is created on the drive; otherwise we only create the
- * local directory. The returned URL is always `folder:<drivePath>` so the
- * application can recognise folder rows regardless of storage backend.
+ * Create a folder on OneDrive. The returned URL is always
+ * `folder:<drivePath>` so the application can recognise folder rows.
  */
 export async function createFolder(
   relativePath: string,
-  localDir: string,
+  _localDir: string,
 ): Promise<CreateFolderResult> {
   const drivePath = buildDrivePath(relativePath);
 
-  // Always create the local mirror so previews / local fallback work
-  if (!existsSync(localDir)) {
-    try {
-      await mkdir(localDir, { recursive: true });
-    } catch (error) {
-      console.error("[Folder] Failed to create local folder:", error);
-    }
+  if (!isOneDriveConfigured()) {
+    throw new Error("OneDrive credentials not configured");
   }
 
-  if (isOneDriveConfigured()) {
-    try {
-      await createOneDriveFolderPath(drivePath);
-      return { storage: "onedrive", url: `folder:${drivePath}` };
-    } catch (error) {
-      console.error("[OneDrive] Folder create failed, using local only:", error);
-    }
-  }
-
-  return { storage: "local", url: `folder:${drivePath}` };
+  await createOneDriveFolderPath(drivePath);
+  return { storage: "onedrive", url: `folder:${drivePath}` };
 }
 
 /**

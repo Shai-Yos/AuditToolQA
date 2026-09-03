@@ -1,14 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { stat, readFile } from "fs/promises";
-import { join, resolve, normalize } from "path";
 import { db } from "~/server/db";
 import { requireUser } from "~/server/helpers/currentUser";
 import {
   extractDrivePath,
   getOneDriveFileBuffer,
 } from "@/server/lib/oneDriveClient";
-
-const UPLOADS_ROOT = join(process.cwd(), "public", "uploads");
 
 const MIME_MAP: Record<string, string> = {
   ".pdf": "application/pdf",
@@ -96,35 +92,5 @@ export async function GET(
     }
   }
 
-  // Fallback: serve from local disk
-  const requested = normalize(join(UPLOADS_ROOT, ...segments));
-  if (!requested.startsWith(resolve(UPLOADS_ROOT))) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
-
-  try {
-    const info = await stat(requested);
-    if (!info.isFile()) {
-      return NextResponse.json({ error: "Not found" }, { status: 404 });
-    }
-
-    const buffer = await readFile(requested);
-    const filename = segments.at(-1) ?? "file";
-    const mime = getMime(filename);
-    const isInline = /\.(pdf|png|jpe?g|gif|webp|svg)$/i.test(filename);
-
-    return new NextResponse(buffer, {
-      status: 200,
-      headers: {
-        "Content-Type": mime,
-        "Content-Length": String(info.size),
-        "Content-Disposition": isInline
-          ? `inline; filename="${encodeURIComponent(filename)}"`
-          : `attachment; filename="${encodeURIComponent(filename)}"`,
-        "Cache-Control": "private, max-age=86400",
-      },
-    });
-  } catch {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
+  return NextResponse.json({ error: "Not found" }, { status: 404 });
 }

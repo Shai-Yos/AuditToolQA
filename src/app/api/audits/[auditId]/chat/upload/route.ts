@@ -194,7 +194,9 @@ export async function POST(
     message: {
       id: message.id,
       authorName: message.authorName,
-      authorImage: message.authorImage ?? undefined,
+      // Keep sender avatar consistent with text messages so it renders
+      // immediately before the next read-time user image resolution.
+      authorImage: "/api/user/photo",
       authorRole: message.authorRole ?? undefined,
       time: message.createdAt.toISOString(),
       text: message.text,
