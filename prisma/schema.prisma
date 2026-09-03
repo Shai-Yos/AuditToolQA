@@ -236,6 +236,7 @@ model Notification {
   message   String   @db.NVarChar(Max)
   linkAdmin String?  // Link for admin dashboard route
   linkUser  String?  // Link for user dashboard route
+  linkAuditOwner String? // Link for audit owner dashboard route
   read      Boolean  @default(false)
   createdAt DateTime @default(now())
 

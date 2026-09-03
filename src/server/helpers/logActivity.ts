@@ -112,7 +112,9 @@ export async function logActivity({
     if (mapping) {
       // Resolve the auditId from the event so we can find the audit owner
       let auditId: string | undefined;
-      if (type === "REQUEST_CREATED" || type.startsWith("AUDIT_") || type === "USER_ASSIGNED_AUDIT" || type === "USER_UNASSIGNED_AUDIT" || type === "USER_ROLE_UPDATED_AUDIT") {
+      if (type === "REQUEST_CREATED") {
+        auditId = meta?.auditId ?? targetId;
+      } else if (type.startsWith("AUDIT_") || type === "USER_ASSIGNED_AUDIT" || type === "USER_UNASSIGNED_AUDIT" || type === "USER_ROLE_UPDATED_AUDIT") {
         auditId = targetId;
       } else if (meta?.auditId) {
         auditId = meta.auditId;
@@ -144,7 +146,7 @@ export async function logActivity({
         : allIds;
 
       if (finalIds.length > 0) {
-        const { linkAdmin, linkUser } = buildLinks(type, targetId, meta);
+        const { linkAdmin, linkUser, linkAuditOwner } = buildLinks(type, targetId, meta);
         await createNotifications(
           finalIds.map((userId) => ({
             userId,
@@ -153,6 +155,7 @@ export async function logActivity({
             message: mapping.messageFn(targetTitle, actorName, meta),
             linkAdmin,
             linkUser,
+            linkAuditOwner,
           })),
         );
       }
@@ -166,14 +169,23 @@ function buildLinks(
   type: ActivityType,
   targetId: string,
   meta?: Record<string, string>,
-): { linkAdmin?: string; linkUser?: string } {
+): { linkAdmin?: string; linkUser?: string; linkAuditOwner?: string } {
   // Request-related types: targetId is requestId, meta.auditId is the audit
-  // Exception: REQUEST_CREATED uses targetId = auditId (no meta.auditId)
   if (type === "REQUEST_CREATED") {
-    // targetId is the auditId for REQUEST_CREATED
+    const auditId = meta?.auditId ?? targetId;
+    const requestId = meta?.requestId;
+    if (requestId) {
+      return {
+        linkAdmin: `/adminDashboard/audits/${auditId}/requests/${requestId}`,
+        linkUser: `/userDashboard/audits/${auditId}/requests/${requestId}`,
+        linkAuditOwner: `/auditOwnerDashboard/audits/${auditId}/requests/${requestId}`,
+      };
+    }
+    // Backward-compatible fallback for older callers without requestId
     return {
-      linkAdmin: `/adminDashboard/audits/${targetId}/kanbanBoard`,
-      linkUser: `/userDashboard/audits/${targetId}/kanbanBoard`,
+      linkAdmin: `/adminDashboard/audits/${auditId}/kanbanBoard`,
+      linkUser: `/userDashboard/audits/${auditId}/kanbanBoard`,
+      linkAuditOwner: `/auditOwnerDashboard/audits/${auditId}/kanbanBoard`,
     };
   }
   if (type.startsWith("REQUEST_") || type === "USER_ASSIGNED_REQUEST" || type === "USER_UNASSIGNED_REQUEST") {
@@ -182,28 +194,33 @@ function buildLinks(
       return {
         linkAdmin: `/adminDashboard/audits/${auditId}/requests/${targetId}`,
         linkUser: `/userDashboard/audits/${auditId}/requests/${targetId}`,
+        linkAuditOwner: `/auditOwnerDashboard/audits/${auditId}/requests/${targetId}`,
       };
     }
     // Fallback: link to the request without audit context
     return {
       linkAdmin: `/adminDashboard/allRequests`,
       linkUser: `/userDashboard`,
+      linkAuditOwner: `/auditOwnerDashboard/allRequests`,
     };
   }
   if (type.startsWith("AUDIT_") || type === "USER_ASSIGNED_AUDIT" || type === "USER_UNASSIGNED_AUDIT" || type === "USER_ROLE_UPDATED_AUDIT") {
     return {
       linkAdmin: `/adminDashboard/audits/${targetId}`,
       linkUser: `/userDashboard/audits/${targetId}`,
+      linkAuditOwner: `/auditOwnerDashboard/audits/${targetId}`,
     };
   }
   if (type === "FEEDBACK_RECEIVED") {
     return {
       linkAdmin: `/adminDashboard/feedback`,
+      linkAuditOwner: `/auditOwnerDashboard/my-feedback`,
     };
   }
   if (type.startsWith("ACCESS_REQUEST_")) {
     return {
       linkAdmin: `/adminDashboard/accessRequests`,
+      linkAuditOwner: `/auditOwnerDashboard/requestRole`,
     };
   }
   return {};

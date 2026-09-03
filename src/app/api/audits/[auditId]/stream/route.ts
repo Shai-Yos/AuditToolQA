@@ -19,16 +19,26 @@ export async function GET(
 
   const stream = new ReadableStream({
     start(controller) {
-      const send = (event: string) => {
+      const sendRaw = (payload: string) => {
         try {
-          controller.enqueue(encoder.encode(`data: ${event}\n\n`));
+          controller.enqueue(encoder.encode(payload));
         } catch {
           // controller already closed
         }
       };
 
+      const send = (event: string) => {
+        sendRaw(`data: ${event}\n\n`);
+      };
+
+      // Ask clients to reconnect quickly if the stream drops.
+      sendRaw("retry: 3000\n\n");
+
       // Initial heartbeat so the client knows it connected
       send("connected");
+
+      // Keep the stream warm through proxies/load balancers.
+      const keepAlive = setInterval(() => sendRaw(": ping\n\n"), 15000);
 
       void (async () => {
         try {
@@ -44,6 +54,7 @@ export async function GET(
       bus.on(`audit:${auditId}`, listener);
 
       req.signal.addEventListener("abort", () => {
+        clearInterval(keepAlive);
         bus.off(`audit:${auditId}`, listener);
         try { controller.close(); } catch { /* already closed */ }
       });
@@ -55,6 +66,7 @@ export async function GET(
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache, no-transform",
       Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
     },
   });
 }

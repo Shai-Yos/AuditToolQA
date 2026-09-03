@@ -359,7 +359,7 @@ export default function AuditRequestsClient({
             className={`w-32 rounded-2xl border p-4 text-left shadow-sm transition hover:shadow-md ${
               selectedStatuses.length === 0
                 ? "border-slate-400 bg-slate-900 text-white"
-                : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
+                : "border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:border-slate-300 dark:hover:border-slate-600"
             }`}
           >
             <div className="text-2xl font-bold">{requests.length}</div>
@@ -376,23 +376,23 @@ export default function AuditRequestsClient({
                 )
               }
               className={`w-32 rounded-2xl border p-4 text-left shadow-sm transition hover:shadow-md ${
-                selectedStatuses.includes(status) ? "" : "border-slate-200 bg-white hover:border-opacity-60"
+                selectedStatuses.includes(status) ? "" : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-opacity-60 dark:hover:border-slate-600"
               }`}
               style={
                 selectedStatuses.includes(status)
                   ? { borderColor: color, backgroundColor: color + "14", outline: `2px solid ${color}`, outlineOffset: "0px" }
-                  : { borderColor: "#e2e8f0", backgroundColor: "#fff" }
+                  : undefined
               }
             >
               <div
-                className="text-2xl font-bold"
-                style={{ color: selectedStatuses.includes(status) ? color : "#0f172a" }}
+                className={`text-2xl font-bold ${selectedStatuses.includes(status) ? "" : "text-slate-900 dark:text-slate-100"}`}
+                style={{ color: selectedStatuses.includes(status) ? color : undefined }}
               >
                 {count}
               </div>
               <div
-                className="mt-1 text-xs font-semibold uppercase tracking-wide opacity-75"
-                style={{ color: selectedStatuses.includes(status) ? color : "#64748b" }}
+                className={`mt-1 text-xs font-semibold uppercase tracking-wide opacity-75 ${selectedStatuses.includes(status) ? "" : "text-slate-500 dark:text-slate-400"}`}
+                style={{ color: selectedStatuses.includes(status) ? color : undefined }}
               >
                 {status}
               </div>
@@ -457,18 +457,18 @@ export default function AuditRequestsClient({
 
         {/* Table */}
         {filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white p-14 text-center shadow-sm">
+          <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white p-14 text-center shadow-sm dark:border-slate-700 dark:bg-slate-900/70">
             <div className="mb-3 text-5xl">📭</div>
-            <div className="text-lg font-semibold text-slate-900">No requests found</div>
-            <div className="mt-1 text-sm text-slate-500">
+            <div className="text-lg font-semibold text-slate-900 dark:text-slate-100">No requests found</div>
+            <div className="mt-1 text-sm text-slate-500 dark:text-slate-400">
               {query ? "Try a different search term." : "There are no requests yet."}
             </div>
           </div>
         ) : (
-          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900/80">
             <div className="max-h-[65vh] overflow-y-auto">
               <table className="min-w-full text-sm">
-                <thead className="sticky top-0 z-10 bg-slate-50">
+                <thead className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-800">
                   <tr>
                     <SortableTh label="Track #" sortKey="track" current={sortKey} dir={sortDir} onClick={toggleSort} />
                     <SortableTh

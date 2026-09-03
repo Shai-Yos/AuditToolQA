@@ -9,6 +9,7 @@ interface Notification {
   message: string;
   linkAdmin: string | null;
   linkUser: string | null;
+  linkAuditOwner: string | null;
   read: boolean;
   createdAt: string;
 }
@@ -250,10 +251,41 @@ export default function NotificationBell() {
     void fetchPrefs();
 
     let es: EventSource | null = null;
-    let reconnectTimer: ReturnType<typeof setTimeout>;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let stopped = false;
+    let reconnectAttempt = 0;
+
+    const clearReconnectTimer = () => {
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+      }
+    };
+
+    const scheduleReconnect = () => {
+      if (stopped) return;
+      clearReconnectTimer();
+      const baseDelay = Math.min(15000, 1000 * 2 ** Math.min(reconnectAttempt, 4));
+      const jitter = Math.floor(Math.random() * 1000);
+      reconnectAttempt += 1;
+      reconnectTimer = setTimeout(() => {
+        if (stopped) return;
+        if (document.hidden || !navigator.onLine) {
+          scheduleReconnect();
+          return;
+        }
+        connect();
+      }, baseDelay + jitter);
+    };
 
     const connect = () => {
+      if (stopped) return;
+      clearReconnectTimer();
+      es?.close();
       es = new EventSource("/api/notifications/stream");
+      es.onopen = () => {
+        reconnectAttempt = 0;
+      };
 
       es.onmessage = (event) => {
         try {
@@ -292,16 +324,28 @@ export default function NotificationBell() {
 
       es.onerror = () => {
         es?.close();
-        // Reconnect after 5s
-        reconnectTimer = setTimeout(connect, 5000);
+        scheduleReconnect();
       };
     };
 
+    const reconnectNow = () => {
+      if (stopped) return;
+      if (document.hidden || !navigator.onLine) return;
+      connect();
+    };
+
     connect();
+    const onVisible = () => { if (!document.hidden) reconnectNow(); };
+    const onOnline = () => reconnectNow();
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("online", onOnline);
 
     return () => {
+      stopped = true;
       es?.close();
-      clearTimeout(reconnectTimer);
+      clearReconnectTimer();
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("online", onOnline);
     };
   }, [fetchNotifications, fetchPrefs]);
 
@@ -335,8 +379,19 @@ export default function NotificationBell() {
 
   // Pick the correct link based on current dashboard
   const getLink = (n: Notification) => {
-    const isAdmin = window.location.pathname.startsWith("/adminDashboard");
-    return isAdmin ? n.linkAdmin : n.linkUser;
+    const path = window.location.pathname;
+    if (path.startsWith("/adminDashboard")) {
+      return n.linkAdmin;
+    }
+    if (path.startsWith("/auditOwnerDashboard")) {
+      return (
+        n.linkAuditOwner
+        ?? n.linkUser?.replace("/userDashboard", "/auditOwnerDashboard")
+        ?? n.linkAdmin?.replace("/adminDashboard", "/auditOwnerDashboard")
+        ?? null
+      );
+    }
+    return n.linkUser;
   };
 
   const handleClick = (n: Notification) => {

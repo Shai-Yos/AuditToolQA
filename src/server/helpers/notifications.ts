@@ -51,6 +51,7 @@ export async function createNotifications(
     message: string;
     linkAdmin?: string;
     linkUser?: string;
+    linkAuditOwner?: string;
   }[],
 ) {
   if (notifications.length === 0) return;
@@ -97,6 +98,16 @@ export async function createNotifications(
 
     if (allowed.length === 0) return;
 
+    const toAuditOwnerLink = (linkUser?: string, linkAdmin?: string) => {
+      if (linkUser?.startsWith("/userDashboard")) {
+        return linkUser.replace("/userDashboard", "/auditOwnerDashboard");
+      }
+      if (linkAdmin?.startsWith("/adminDashboard")) {
+        return linkAdmin.replace("/adminDashboard", "/auditOwnerDashboard");
+      }
+      return null;
+    };
+
     await db.notification.createMany({
       data: allowed.map((n) => ({
         userId: n.userId,
@@ -105,6 +116,7 @@ export async function createNotifications(
         message: n.message,
         linkAdmin: n.linkAdmin ?? null,
         linkUser: n.linkUser ?? null,
+        linkAuditOwner: n.linkAuditOwner ?? toAuditOwnerLink(n.linkUser, n.linkAdmin),
       })),
     });
 

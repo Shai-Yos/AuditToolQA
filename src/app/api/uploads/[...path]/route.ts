@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { stat, readFile } from "fs/promises";
 import { join, resolve, normalize } from "path";
 import { db } from "~/server/db";
+import { requireUser } from "~/server/helpers/currentUser";
 import {
   extractDrivePath,
   getOneDriveFileBuffer,
@@ -35,21 +36,32 @@ export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ path: string[] }> },
 ) {
+  try {
+    await requireUser();
+  } catch {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const segments = (await params).path;
 
-  // Check if a document, chat message, or audit file with an OneDrive URL matches this path.
-  // segments already include the root folder (e.g. ["AuditTool", "Annual Internal Audit Plan", "file.pdf"])
-  // so we join them directly — do NOT add an extra "AuditTool/" prefix here.
-  const oneDriveUrl = `onedrive:/${segments.join("/")}`;
+  // Support both URL shapes:
+  // 1. Canonical paths that include the OneDrive root folder in the browser URL
+  //    (e.g. /api/uploads/AuditTool/Annual Internal Audit Plan/file.docx)
+  // 2. Legacy audit/chat paths that omit the root folder in the browser URL
+  //    (e.g. /api/uploads/Audits/<audit>/General/file.docx)
+  const joinedPath = segments.join("/");
+  const oneDriveUrls = segments[0] === "AuditTool"
+    ? [`onedrive:/${joinedPath}`]
+    : [`onedrive:/AuditTool/${joinedPath}`, `onedrive:/${joinedPath}`];
 
   const [doc, chat, auditFile, riskFile, planFile, sirtFile, regulatoryFile] = await Promise.all([
-    db.document.findFirst({ where: { url: oneDriveUrl }, select: { url: true } }),
-    db.chatMessage.findFirst({ where: { fileUrl: oneDriveUrl }, select: { fileUrl: true } }),
-    db.auditFile.findFirst({ where: { fileUrl: oneDriveUrl }, select: { fileUrl: true } }),
-    db.riskAssessmentFile.findFirst({ where: { fileUrl: oneDriveUrl }, select: { fileUrl: true } }),
-    db.auditPlanFile.findFirst({ where: { fileUrl: oneDriveUrl }, select: { fileUrl: true } }),
-    db.sirtFile.findFirst({ where: { fileUrl: oneDriveUrl }, select: { fileUrl: true } }),
-    db.regulatoryImplementationFile.findFirst({ where: { fileUrl: oneDriveUrl }, select: { fileUrl: true } }),
+    db.document.findFirst({ where: { url: { in: oneDriveUrls } }, select: { url: true } }),
+    db.chatMessage.findFirst({ where: { fileUrl: { in: oneDriveUrls } }, select: { fileUrl: true } }),
+    db.auditFile.findFirst({ where: { fileUrl: { in: oneDriveUrls } }, select: { fileUrl: true } }),
+    db.riskAssessmentFile.findFirst({ where: { fileUrl: { in: oneDriveUrls } }, select: { fileUrl: true } }),
+    db.auditPlanFile.findFirst({ where: { fileUrl: { in: oneDriveUrls } }, select: { fileUrl: true } }),
+    db.sirtFile.findFirst({ where: { fileUrl: { in: oneDriveUrls } }, select: { fileUrl: true } }),
+    db.regulatoryImplementationFile.findFirst({ where: { fileUrl: { in: oneDriveUrls } }, select: { fileUrl: true } }),
   ]);
 
   const matchedOneDriveUrl =

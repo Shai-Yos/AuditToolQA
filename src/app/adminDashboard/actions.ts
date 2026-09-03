@@ -311,8 +311,7 @@ export async function createAudit(
           assignedCount: String(assignedUserIds.length),
           assigneeNames,
         },
-        // Only notify assignees when audit is ACTIVE (DRAFT should not bother them)
-        notifyUserIds: finalStatus === "ACTIVE" ? assignedUserIds.filter(id => id !== admin.id) : [],
+        notifyUserIds: assignedUserIds.filter(id => id !== admin.id),
       });
     }
 

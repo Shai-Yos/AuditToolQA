@@ -18,17 +18,26 @@ export async function GET(req: NextRequest) {
   const stream = new ReadableStream({
     async start(controller) {
       let lastChecked = new Date();
-
-      const send = (data: string) => {
+      const sendRaw = (payload: string) => {
         try {
-          controller.enqueue(encoder.encode(`data: ${data}\n\n`));
+          controller.enqueue(encoder.encode(payload));
         } catch {
           // controller already closed
         }
       };
 
+      const send = (data: string) => {
+        sendRaw(`data: ${data}\n\n`);
+      };
+
+      // Ask clients to reconnect quickly if the stream drops.
+      sendRaw("retry: 3000\n\n");
+
       // Send initial heartbeat
       send(JSON.stringify({ type: "connected" }));
+
+      // Keep the stream warm through proxies/load balancers.
+      const keepAlive = setInterval(() => sendRaw(": ping\n\n"), 15000);
 
       // Push new notifications when the event bus fires for this user
       const onNotification = async () => {
@@ -55,6 +64,7 @@ export async function GET(req: NextRequest) {
       bus.on(`notifications:${userId}`, onNotification);
 
       req.signal.addEventListener("abort", () => {
+        clearInterval(keepAlive);
         bus.off(`notifications:${userId}`, onNotification);
         try { controller.close(); } catch { /* already closed */ }
       });
@@ -66,6 +76,7 @@ export async function GET(req: NextRequest) {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache, no-transform",
       Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
     },
   });
 }

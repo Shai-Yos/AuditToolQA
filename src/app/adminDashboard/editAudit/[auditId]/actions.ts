@@ -446,7 +446,7 @@ export async function updateAudit(
                 assignedCount: String(addedIds.length),
                 assigneeNames: addedNames,
               },
-              notifyUserIds: status === "ACTIVE" ? addedIds.filter(id => id !== admin.id) : [],
+              notifyUserIds: addedIds.filter(id => id !== admin.id),
             });
           })()
         : Promise.resolve(),

@@ -116,21 +116,70 @@ export function AuditNavProvider({ children }: { children: ReactNode }) {
     }
 
     const auditId = activeAudit.id;
+    let es: EventSource | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let closed = false;
+    let reconnectAttempt = 0;
 
-    const es = new EventSource(`/api/audits/${auditId}/stream`);
-    es.onmessage = (e) => {
-      try {
-        const payload = JSON.parse(e.data) as TabCountsPayload;
-        if (payload?.type === "tab-counts" && payload.counts) {
-          applyTabCounts(auditId, payload.counts);
-        }
-      } catch {
-        // keep compatibility with string events while payload rollout is in progress
+    const clearReconnectTimer = () => {
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
       }
-      streamListeners.current.forEach((listener) => listener(e.data));
     };
 
-    return () => { es.close(); };
+    const connect = () => {
+      if (closed) return;
+      clearReconnectTimer();
+      es?.close();
+
+      es = new EventSource(`/api/audits/${auditId}/stream`);
+      es.onopen = () => {
+        reconnectAttempt = 0;
+      };
+      es.onmessage = (e) => {
+        try {
+          const payload = JSON.parse(e.data) as TabCountsPayload;
+          if (payload?.type === "tab-counts" && payload.counts) {
+            applyTabCounts(auditId, payload.counts);
+          }
+        } catch {
+          // keep compatibility with string events while payload rollout is in progress
+        }
+        streamListeners.current.forEach((listener) => listener(e.data));
+      };
+      es.onerror = () => {
+        es?.close();
+        const baseDelay = Math.min(10000, 1000 * 2 ** Math.min(reconnectAttempt, 4));
+        const jitter = Math.floor(Math.random() * 600);
+        reconnectAttempt += 1;
+        reconnectTimer = setTimeout(() => {
+          if (closed) return;
+          if (document.hidden || !navigator.onLine) return;
+          connect();
+        }, baseDelay + jitter);
+      };
+    };
+
+    const reconnectNow = () => {
+      if (closed) return;
+      if (document.hidden || !navigator.onLine) return;
+      connect();
+    };
+
+    connect();
+    const onVisible = () => { if (!document.hidden) reconnectNow(); };
+    const onOnline = () => reconnectNow();
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("online", onOnline);
+
+    return () => {
+      closed = true;
+      clearReconnectTimer();
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("online", onOnline);
+      es?.close();
+    };
   }, [activeAudit?.id, applyTabCounts]);
 
   return (

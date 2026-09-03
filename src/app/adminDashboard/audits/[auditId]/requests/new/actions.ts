@@ -143,9 +143,11 @@ export async function createRequest(_: State, input: FormData | CreateRequestInp
   await logActivity({
     type: "REQUEST_CREATED",
     actorName: currentUser.name ?? currentUser.email ?? "User",
-    targetId: auditId,
+    targetId: requestId,
     targetTitle: title,
     meta: {
+      auditId,
+      requestId,
       auditTitle: audit?.title ?? "",
       isFormal: String(isFormal),
       trackNumber,
