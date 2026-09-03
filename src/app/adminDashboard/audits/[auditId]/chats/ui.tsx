@@ -599,23 +599,6 @@ export function ChatPanel({
     }
   }, [auditId, channel]);
 
-  useEffect(() => {
-    if (typeof window === "undefined" || !("BroadcastChannel" in window)) return;
-    const bc = new BroadcastChannel(`audit-chat-sync-${auditId}`);
-    localSyncRef.current = bc;
-    bc.onmessage = (msg: MessageEvent<{ auditId?: string; channel?: string; event?: string }>) => {
-      const data = msg.data;
-      if (!data || data.auditId !== auditId || data.channel !== channel) return;
-      if (data.event === "chat") void fetchIncremental();
-      if (data.event === "typing") void fetchTyping();
-    };
-    return () => {
-      bc.close();
-      if (localSyncRef.current === bc) localSyncRef.current = null;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [auditId, channel, fetchIncremental, fetchTyping]);
-
   // Auto-resize textarea (chat composer only; notepad uses flex)
   useEffect(() => {
     if (rightPanel) return;
@@ -915,6 +898,23 @@ useEffect(() => {
     } catch { liveStatusRef.current = "error"; setLiveStatus("error"); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auditId, channel, rightPanel]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !("BroadcastChannel" in window)) return;
+    const bc = new BroadcastChannel(`audit-chat-sync-${auditId}`);
+    localSyncRef.current = bc;
+    bc.onmessage = (msg: MessageEvent<{ auditId?: string; channel?: string; event?: string }>) => {
+      const data = msg.data;
+      if (!data || data.auditId !== auditId || data.channel !== channel) return;
+      if (data.event === "chat") void fetchIncremental();
+      if (data.event === "typing") void fetchTyping();
+    };
+    return () => {
+      bc.close();
+      if (localSyncRef.current === bc) localSyncRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auditId, channel, fetchIncremental, fetchTyping]);
 
   // Full sync — called every 60s as a safety net for missed events (deletes, edits)
   const fullSyncRef = useRef<ReturnType<typeof setInterval> | null>(null);
