@@ -186,6 +186,8 @@ export async function POST(
         where: { id: existing.id },
         data: { text, editedAt: new Date() },
       });
+      emitAuditEvent(auditId, "chat");
+      emitAuditTabCounts(auditId, await getAuditTabCounts(auditId));
       return NextResponse.json({
         ok: true,
         message: {

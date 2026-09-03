@@ -566,6 +566,7 @@ export function ChatPanel({
   const [exportStatusText, setExportStatusText] = useState<string | null>(null);
   const [typingNames, setTypingNames] = useState<string[]>([]);
   const [replyingTo, setReplyingTo] = useState<{ id: string; authorName: string; text: string } | null>(null);
+  const localSyncRef = useRef<BroadcastChannel | null>(null);
 
   useEffect(() => {
     if (!exportStatusText) return;
@@ -582,6 +583,38 @@ export function ChatPanel({
   const savedMsgIdsRef = useRef<string[]>(rightPanel && latestInitialTranscription ? [latestInitialTranscription.id] : []);
   const savedContentRef = useRef<string>(rightPanel ? latestInitialTranscription?.text ?? "" : "");
   const hasUserEditedRef = useRef(false);
+
+  const emitLocalSync = useCallback((event: "chat" | "typing") => {
+    const payload = {
+      auditId,
+      channel,
+      event,
+      ts: Date.now(),
+      nonce: crypto.randomUUID(),
+    };
+    try {
+      localSyncRef.current?.postMessage(payload);
+    } catch {
+      // Ignore local sync transport failures.
+    }
+  }, [auditId, channel]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !("BroadcastChannel" in window)) return;
+    const bc = new BroadcastChannel(`audit-chat-sync-${auditId}`);
+    localSyncRef.current = bc;
+    bc.onmessage = (msg: MessageEvent<{ auditId?: string; channel?: string; event?: string }>) => {
+      const data = msg.data;
+      if (!data || data.auditId !== auditId || data.channel !== channel) return;
+      if (data.event === "chat") void fetchIncremental();
+      if (data.event === "typing") void fetchTyping();
+    };
+    return () => {
+      bc.close();
+      if (localSyncRef.current === bc) localSyncRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auditId, channel, fetchIncremental, fetchTyping]);
 
   // Auto-resize textarea (chat composer only; notepad uses flex)
   useEffect(() => {
@@ -707,6 +740,7 @@ useEffect(() => {
 
         setSaveStatus("saved");
         setTimeout(() => setSaveStatus("idle"), 2000);
+        emitLocalSync("chat");
         return;
       }
 
@@ -746,6 +780,7 @@ useEffect(() => {
 
         setSaveStatus("saved");
         setTimeout(() => setSaveStatus("idle"), 2000);
+        emitLocalSync("chat");
         return;
       }
 
@@ -777,6 +812,7 @@ useEffect(() => {
 
       setSaveStatus("saved");
       setTimeout(() => setSaveStatus("idle"), 2000);
+      emitLocalSync("chat");
     } catch (err) {
       console.error("Transcription auto-save crashed:", err);
       setSaveStatus("idle");
@@ -992,6 +1028,7 @@ useEffect(() => {
             ? prev
             : [...prev, { ...data.message, _key: crypto.randomUUID() }],
         );
+        emitLocalSync("chat");
         setTimeout(() => {
           const el = scrollContainerRef.current;
           if (el) el.scrollTop = el.scrollHeight;
@@ -1034,6 +1071,7 @@ useEffect(() => {
         setMessages((prev) =>
           prev.map((m) => m.id === editingId ? { ...m, text: data.message.text, editedAt: data.message.editedAt ?? new Date().toISOString() } : m),
         );
+        emitLocalSync("chat");
       }
     } catch { /* ignore */ } finally {
       setEditSaving(false);
@@ -1052,6 +1090,7 @@ useEffect(() => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ messageId }),
       });
+      emitLocalSync("chat");
     } catch { /* ignore */ }
   };
 
@@ -1122,6 +1161,7 @@ useEffect(() => {
         setMessages((prev) =>
           prev.map((m) => m.id === tempId ? { ...data.message, _key: tempId } : m),
         );
+        emitLocalSync("chat");
       } else {
         // Remove optimistic message on failure
         setMessages((prev) => prev.filter((m) => m.id !== tempId));
