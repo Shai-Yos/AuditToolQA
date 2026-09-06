@@ -1,12 +1,10 @@
 import { buildUserRolesFromJson } from "@/server/lib/roomRoles";
 
-type AppRole = "ADMIN" | "AUDIT_OWNER" | "USER";
-
 const LOCK_TTL_MS = 30_000;
 
 type PermissionInput = {
   userId: string;
-  userRole: AppRole;
+  userRole: string;
   auditCreatedById: string;
   roomRolesJson: string | null;
   requestLabels: string[];
