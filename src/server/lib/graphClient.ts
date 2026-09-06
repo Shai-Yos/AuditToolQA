@@ -2,6 +2,10 @@ import { env } from "@/env";
 
 let cachedToken: { value: string; expiresAt: number } | null = null;
 
+type GraphFetchOptions = Omit<RequestInit, "headers"> & {
+  headers?: HeadersInit;
+};
+
 async function getAppToken(): Promise<string> {
   const now = Date.now();
   if (cachedToken && cachedToken.expiresAt > now + 60_000) {
@@ -33,6 +37,39 @@ async function getAppToken(): Promise<string> {
   };
 
   return cachedToken.value;
+}
+
+function clearCachedToken(token: string): void {
+  if (cachedToken?.value === token) {
+    cachedToken = null;
+  }
+}
+
+async function graphFetch(path: string, options: GraphFetchOptions = {}, retryOnExpiredToken = true): Promise<Response> {
+  const token = await getAppToken();
+  const res = await fetch(`https://graph.microsoft.com/v1.0${path}`, {
+    ...options,
+    headers: {
+      ...options.headers,
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (retryOnExpiredToken && res.status === 401) {
+    const errorText = await res.text();
+    if (errorText.includes("InvalidAuthenticationToken") || errorText.includes("token is expired")) {
+      clearCachedToken(token);
+      return graphFetch(path, options, false);
+    }
+
+    return new Response(errorText, {
+      status: res.status,
+      statusText: res.statusText,
+      headers: res.headers,
+    });
+  }
+
+  return res;
 }
 
 export interface GraphUser {
@@ -112,11 +149,8 @@ export async function searchUsers(query: string): Promise<GraphUser[]> {
 }
 
 export async function getUserById(userId: string): Promise<GraphUser | null> {
-  const token = await getAppToken();
-
-  const res = await fetch(
-    `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(userId)}?$select=id,displayName,mail,userPrincipalName,jobTitle,department`,
-    { headers: { Authorization: `Bearer ${token}` } }
+  const res = await graphFetch(
+    `/users/${encodeURIComponent(userId)}?$select=id,displayName,mail,userPrincipalName,jobTitle,department`
   );
 
   if (res.status === 404) return null;
@@ -130,11 +164,7 @@ export async function getUserById(userId: string): Promise<GraphUser | null> {
  * Returns null if not found.
  */
 export async function getAzureOidByEmail(email: string): Promise<string | null> {
-  const token = await getAppToken();
-  const res = await fetch(
-    `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(email)}?$select=id`,
-    { headers: { Authorization: `Bearer ${token}` } }
-  );
+  const res = await graphFetch(`/users/${encodeURIComponent(email)}?$select=id`);
   if (!res.ok) return null;
   const data = (await res.json()) as { id: string };
   return data.id ?? null;
@@ -149,32 +179,27 @@ export async function sendMailViaGraph(params: {
   if (!sender) return false;
 
   try {
-    const token = await getAppToken();
-    const res = await fetch(
-      `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(sender)}/sendMail`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          message: {
-            subject: params.subject,
-            body: {
-              contentType: "HTML",
-              content: params.html,
-            },
-            toRecipients: [
-              {
-                emailAddress: { address: params.to },
-              },
-            ],
-          },
-          saveToSentItems: "false",
-        }),
+    const res = await graphFetch(`/users/${encodeURIComponent(sender)}/sendMail`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
       },
-    );
+      body: JSON.stringify({
+        message: {
+          subject: params.subject,
+          body: {
+            contentType: "HTML",
+            content: params.html,
+          },
+          toRecipients: [
+            {
+              emailAddress: { address: params.to },
+            },
+          ],
+        },
+        saveToSentItems: "false",
+      }),
+    });
 
     if (!res.ok) {
       console.error(`[Mail] Graph sendMail failed for ${params.to}: ${res.status} ${await res.text()}`);
@@ -195,18 +220,13 @@ export async function sendMailViaGraph(params: {
  */
 export async function isMemberOfGroup(userId: string, groupId: string): Promise<boolean> {
   try {
-    const token = await getAppToken();
-    const res = await fetch(
-      `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(userId)}/checkMemberGroups`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ groupIds: [groupId] }),
-      }
-    );
+    const res = await graphFetch(`/users/${encodeURIComponent(userId)}/checkMemberGroups`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ groupIds: [groupId] }),
+    });
     if (!res.ok) {
       const errorText = await res.text();
       console.error(`[isMemberOfGroup] Graph API error for user ${userId}, group ${groupId}:`, res.status, errorText);
@@ -226,13 +246,12 @@ export async function isMemberOfGroup(userId: string, groupId: string): Promise<
  * Fetch all direct members of an Azure AD group (OIDs only, paginated).
  */
 export async function listGroupMembers(groupId: string): Promise<string[]> {
-  const token = await getAppToken();
   const oids: string[] = [];
   let url: string | null =
     `https://graph.microsoft.com/v1.0/groups/${encodeURIComponent(groupId)}/members?$select=id&$top=999`;
 
   while (url) {
-    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    const res = await graphFetch(url.replace("https://graph.microsoft.com/v1.0", ""));
     if (!res.ok) break;
     const data = (await res.json()) as { value: Array<{ id: string }>; "@odata.nextLink"?: string };
     data.value.forEach((m) => oids.push(m.id));
@@ -245,13 +264,12 @@ export async function listGroupMembers(groupId: string): Promise<string[]> {
  * List every user in the tenant (paginated), returning id + displayName + mail/UPN.
  */
 export async function listAllAzureUsers(): Promise<GraphUser[]> {
-  const token = await getAppToken();
   const users: GraphUser[] = [];
   let url: string | null =
     `https://graph.microsoft.com/v1.0/users?$select=id,displayName,mail,userPrincipalName,jobTitle,department&$top=999`;
 
   while (url) {
-    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    const res = await graphFetch(url.replace("https://graph.microsoft.com/v1.0", ""));
     if (!res.ok) break;
     const data = (await res.json()) as { value: GraphUser[]; "@odata.nextLink"?: string };
     users.push(...data.value);
@@ -271,12 +289,7 @@ export class GraphPhotoUnavailableError extends Error {
 }
 
 export async function getUserPhoto(userId: string): Promise<string | null> {
-  const token = await getAppToken();
-
-  const res = await fetch(
-    `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(userId)}/photo/$value`,
-    { headers: { Authorization: `Bearer ${token}` } }
-  );
+  const res = await graphFetch(`/users/${encodeURIComponent(userId)}/photo/$value`);
 
   if (!res.ok) {
     if (res.status === 404) return null; // confirmed: user has no photo

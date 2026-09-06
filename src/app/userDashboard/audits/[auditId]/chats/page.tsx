@@ -3,7 +3,6 @@ import { db } from "~/server/db";
 import { requireUser } from "~/server/helpers/currentUser";
 import { frToBrConnectionsFromJson, roleForChannel } from "~/server/lib/roomRoles";
 import { buildUserRolesFromJson } from "~/server/lib/roomRoles";
-import { commFrIndicesFromRoleAndRooms } from "~/server/lib/roomRoles";
 import { transcriptionFrIndicesFromRole } from "~/server/lib/roomRoles";
 import ChatsUI from "./ui";
 
@@ -109,7 +108,7 @@ export default async function Page({
     commFrIndices = allFrIndices;
   } else if (assigneeRecord) {
     transcriptionFrIndices = transcriptionFrIndicesFromRole(effectiveRoleString);
-    commFrIndices = commFrIndicesFromRoleAndRooms(effectiveRoleString, audit.roomRolesJson);
+    commFrIndices = Array.from({ length: frCount }, (_, i) => i + 1);
   } else {
     transcriptionFrIndices = [];
     commFrIndices = [];

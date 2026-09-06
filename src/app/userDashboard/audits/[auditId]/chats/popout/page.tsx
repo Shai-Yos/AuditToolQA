@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { db } from "~/server/db";
 import { requireUser } from "~/server/helpers/currentUser";
-import { canAccessTranscription, canAccessComm, roleForChannel } from "~/server/lib/roomRoles";
+import { canAccessTranscription, roleForChannel, buildUserRolesFromJson } from "~/server/lib/roomRoles";
 import PopoutUI from "./ui";
 
 export default async function Page({
@@ -29,6 +29,9 @@ export default async function Page({
   if (!audit) return notFound();
 
   const assignee = audit.users[0];
+  const effectiveRole = audit.roomRolesJson
+    ? buildUserRolesFromJson(audit.roomRolesJson).get(currentUser.id) ?? assignee?.role ?? ""
+    : assignee?.role ?? "";
 
   const messages = await db.chatMessage.findMany({
     where: { auditId, channel },
@@ -83,8 +86,8 @@ export default async function Page({
   const badge = isTranscription ? `FR ${frNum}` : `Room ${frNum}`;
 
   const isAdmin = currentUser.role === "ADMIN";
-  const canTranscribe = isAdmin || (assignee ? canAccessTranscription(assignee.role, frNum) : false);
-  const canComm = isAdmin || (assignee ? canAccessComm(assignee.role, frNum, audit.roomRolesJson) : false);
+  const canTranscribe = isAdmin || (assignee ? canAccessTranscription(effectiveRole, frNum) : false);
+  const canComm = isAdmin || !!assignee;
   const readOnly = isTranscription ? !canTranscribe : !canComm;
 
   return (

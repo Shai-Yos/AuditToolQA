@@ -3,7 +3,7 @@ import { join } from "path";
 import { existsSync } from "fs";
 import { db } from "@/server/db";
 import { requireUser } from "@/server/helpers/currentUser";
-import { buildUserRolesFromJson, canAccessTranscription, canAccessComm, roleForChannel } from "@/server/lib/roomRoles";
+import { buildUserRolesFromJson, canAccessTranscription, roleForChannel } from "@/server/lib/roomRoles";
 import { createNotifications } from "@/server/helpers/notifications";
 import { getCachedAuditPrivilege } from "@/server/lib/userPrivilegeCache";
 import { uploadFile } from "@/server/lib/oneDriveClient";
@@ -62,6 +62,9 @@ export async function POST(
 
   // Access check — use cached privilege data
   const privilege = await getCachedAuditPrivilege(user.id, auditId);
+  const effectiveRole = privilege.roomRolesJson
+    ? buildUserRolesFromJson(privilege.roomRolesJson).get(user.id) ?? privilege.assignee?.role ?? ""
+    : privilege.assignee?.role ?? "";
 
   // AUDIT_OWNER: check if they own this audit
   let isAuditOwnerOfThis = false;
@@ -77,22 +80,11 @@ export async function POST(
 
     if (channel.endsWith("-transcription")) {
       const frNum = parseInt(channel.replace("fr", "").replace("-transcription", ""), 10);
-      if (!canAccessTranscription(privilege.assignee.role, frNum)) {
+      if (!canAccessTranscription(effectiveRole, frNum)) {
         return NextResponse.json({ error: "Transcription access denied" }, { status: 403 });
       }
     }
-
-    if (channel.endsWith("-comm")) {
-      const frNum = parseInt(channel.replace("fr", "").replace("-comm", ""), 10);
-      if (!canAccessComm(privilege.assignee.role, frNum, privilege.roomRolesJson)) {
-        return NextResponse.json({ error: "Not assigned to this room" }, { status: 403 });
-      }
-    }
   }
-
-  const effectiveRole = privilege.roomRolesJson
-    ? buildUserRolesFromJson(privilege.roomRolesJson).get(user.id) ?? privilege.assignee?.role ?? ""
-    : privilege.assignee?.role ?? "";
 
   // Determine role label from user's role in this audit
   const authorRole: string | null = effectiveRole

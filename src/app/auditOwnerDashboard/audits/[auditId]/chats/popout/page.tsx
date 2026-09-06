@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { db } from "~/server/db";
 import { requireUser } from "~/server/helpers/currentUser";
-import { canAccessTranscription, canAccessComm, roleForChannel } from "~/server/lib/roomRoles";
+import { canAccessTranscription, roleForChannel, buildUserRolesFromJson } from "~/server/lib/roomRoles";
 import PopoutUI from "@/app/userDashboard/audits/[auditId]/chats/popout/ui";
 
 export default async function AuditOwnerChatPopoutPage({
@@ -37,6 +37,9 @@ export default async function AuditOwnerChatPopoutPage({
   if (!audit) return notFound();
 
   const assignee = audit.users[0];
+  const effectiveRole = audit.roomRolesJson
+    ? buildUserRolesFromJson(audit.roomRolesJson).get(currentUser.id) ?? assignee?.role ?? ""
+    : assignee?.role ?? "";
 
   const messages = await db.chatMessage.findMany({
     where: { auditId, channel },
@@ -92,8 +95,8 @@ export default async function AuditOwnerChatPopoutPage({
 
   let readOnly = false;
   if (!isOwner) {
-    const canTranscribe = assignee ? canAccessTranscription(assignee.role, frNum) : false;
-    const canComm = assignee ? canAccessComm(assignee.role, frNum, audit.roomRolesJson) : false;
+    const canTranscribe = assignee ? canAccessTranscription(effectiveRole, frNum) : false;
+    const canComm = !!assignee;
     readOnly = isTranscription ? !canTranscribe : !canComm;
   }
 

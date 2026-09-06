@@ -264,7 +264,7 @@ export default function RequestUI({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [request.id, lockRetryToken]);
 
-  const forceUnlockAndExit = async () => {
+  const forceUnlockAndStay = async () => {
     if (!canForceUnlock || forceUnlockPending) return;
     suppressLockReacquireRef.current = true;
     setForceUnlockError(null);
@@ -276,8 +276,11 @@ export default function RequestUI({
         setForceUnlockError(data?.error ?? "Could not unlock this request.");
         return;
       }
-      router.replace(`/adminDashboard/audits/${auditId}/requests`);
+      suppressLockReacquireRef.current = false;
+      setLockOwner(null);
+      setLockState("blocked");
     } catch {
+      suppressLockReacquireRef.current = false;
       setForceUnlockError("Could not unlock this request.");
     } finally {
       setForceUnlockPending(false);
@@ -397,10 +400,10 @@ export default function RequestUI({
   }, [request.id, fetchCommentsNotes, refreshLockIfBlocked, verifyOwnedLock]);
 
   useEffect(() => {
-    if (basicState.ok) {
+    if (basicState.ok && lockState === "owned") {
       router.back();
     }
-  }, [basicState.ok, router]);
+  }, [basicState.ok, lockState, router]);
 
   useEffect(() => {
     if (assignState.ok) {
@@ -441,7 +444,7 @@ export default function RequestUI({
             {canForceUnlock && (
               <button
                 type="button"
-                onClick={() => { void forceUnlockAndExit(); }}
+                onClick={() => { void forceUnlockAndStay(); }}
                 disabled={forceUnlockPending}
                 className="w-full rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-semibold text-amber-900 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-amber-600 dark:bg-amber-900 dark:text-amber-100 dark:hover:bg-amber-800 sm:ml-auto sm:w-auto sm:py-1.5"
               >

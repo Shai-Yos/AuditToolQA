@@ -20,12 +20,12 @@ export async function GET(
     where: { id: auditId },
     select: { roomRolesJson: true, frontRoomsCount: true, createdById: true },
   });
+  const allFrIndices = audit?.frontRoomsCount
+    ? Array.from({ length: audit.frontRoomsCount }, (_, i) => i + 1)
+    : [];
 
   // Admins get all FR indices for transcription access
   if (user.role === "ADMIN") {
-    const allFrIndices = audit?.frontRoomsCount
-      ? Array.from({ length: audit.frontRoomsCount }, (_, i) => i + 1)
-      : [];
     return NextResponse.json({
       isAssigned: true,
       transcriptionFrIndices: allFrIndices,
@@ -36,9 +36,6 @@ export async function GET(
 
   // AUDIT_OWNER who owns this audit gets full access (same as admin)
   if (user.role === "AUDIT_OWNER" && audit?.createdById === user.id) {
-    const allFrIndices = audit?.frontRoomsCount
-      ? Array.from({ length: audit.frontRoomsCount }, (_, i) => i + 1)
-      : [];
     return NextResponse.json({
       isAssigned: true,
       transcriptionFrIndices: allFrIndices,
@@ -62,7 +59,7 @@ export async function GET(
   return NextResponse.json({
     isAssigned: true,
     transcriptionFrIndices: transcriptionFrIndicesFromRole(roles),
-    commFrIndices: commFrIndicesFromRoleAndRooms(roles, audit?.roomRolesJson),
+    commFrIndices: allFrIndices,
     roles,
   });
 }

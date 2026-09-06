@@ -24,7 +24,7 @@ export default async function AuditOwnerLayout({
       where: { createdById: user.id },
       select: { id: true },
     }),
-    hasRegulatoryImplementationAccess(user.id),
+    hasRegulatoryImplementationAccess(user.id, { allowGraphFallback: false }),
   ]);
 
   const ownedAuditIds = ownedAudits.map((a) => a.id);

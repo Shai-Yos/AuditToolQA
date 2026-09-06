@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { db } from "~/server/db";
 import { requireUser } from "~/server/helpers/currentUser";
-import { frToBrConnectionsFromJson, roleForChannel, buildUserRolesFromJson, commFrIndicesFromRoleAndRooms, transcriptionFrIndicesFromRole } from "~/server/lib/roomRoles";
+import { frToBrConnectionsFromJson, roleForChannel, buildUserRolesFromJson, transcriptionFrIndicesFromRole } from "~/server/lib/roomRoles";
 import ChatsUI from "@/app/userDashboard/audits/[auditId]/chats/ui";
 
 export default async function AuditOwnerChatsPage({
@@ -107,7 +107,7 @@ export default async function AuditOwnerChatsPage({
     commFrIndices = Array.from({ length: frCount }, (_, i) => i + 1);
   } else if (assigneeRecord) {
     transcriptionFrIndices = transcriptionFrIndicesFromRole(effectiveRoleString);
-    commFrIndices = commFrIndicesFromRoleAndRooms(effectiveRoleString, audit.roomRolesJson ?? null);
+    commFrIndices = Array.from({ length: frCount }, (_, i) => i + 1);
   } else {
     transcriptionFrIndices = [];
     commFrIndices = [];

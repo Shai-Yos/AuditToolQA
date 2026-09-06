@@ -10,66 +10,19 @@ type PermissionInput = {
   requestLabels: string[];
 };
 
-function uniqueNumbers(values: number[]): number[] {
-  return Array.from(new Set(values.filter((v) => Number.isFinite(v) && v > 0)));
-}
-
-function parseFrLabels(labels: string[]): number[] {
-  const indices = labels.flatMap((label) => {
-    const match = /^FR(\d+)$/i.exec(label.trim());
-    return match ? [parseInt(match[1]!, 10)] : [];
-  });
-  return uniqueNumbers(indices);
-}
-
-function parseLeadIndices(roleString: string, prefix: "FR" | "BR"): number[] {
-  const regex = new RegExp(`\\b${prefix}(\\d+)\\s+Lead\\b`, "gi");
-  const matches = Array.from(roleString.matchAll(regex));
-  return uniqueNumbers(matches.map((m) => parseInt(m[1]!, 10)));
-}
-
-function frIndicesConnectedToBrLeads(roomRolesJson: string, brLeadIndices: number[]): number[] {
-  if (brLeadIndices.length === 0) return [];
-  try {
-    const parsed = JSON.parse(roomRolesJson) as {
-      br?: Array<{ brIndex: number; connectedFrIndices?: number[] }>;
-    };
-    const connected: number[] = [];
-    for (const brIdx of brLeadIndices) {
-      const br = parsed.br?.find((entry) => entry.brIndex === brIdx);
-      for (const frIdx of br?.connectedFrIndices ?? []) {
-        connected.push(frIdx);
-      }
-    }
-    return uniqueNumbers(connected);
-  } catch {
-    return [];
-  }
-}
-
 export function canForceUnlockRequest(input: PermissionInput): boolean {
-  const { userId, userRole, auditCreatedById, roomRolesJson, requestLabels } = input;
+  const { userId, userRole, auditCreatedById, roomRolesJson } = input;
 
   if (userRole === "ADMIN") return true;
   if (userRole === "AUDIT_OWNER" && auditCreatedById === userId) return true;
 
-  const requestFrIndices = parseFrLabels(requestLabels);
-  if (requestFrIndices.length === 0 || !roomRolesJson) return false;
+  if (!roomRolesJson) return false;
 
-  let roleString = "";
   try {
-    roleString = buildUserRolesFromJson(roomRolesJson).get(userId) ?? "";
+    return buildUserRolesFromJson(roomRolesJson).has(userId);
   } catch {
     return false;
   }
-  if (!roleString) return false;
-
-  const frLeadIndices = parseLeadIndices(roleString, "FR");
-  if (requestFrIndices.some((fr) => frLeadIndices.includes(fr))) return true;
-
-  const brLeadIndices = parseLeadIndices(roleString, "BR");
-  const connectedFrIndices = frIndicesConnectedToBrLeads(roomRolesJson, brLeadIndices);
-  return requestFrIndices.some((fr) => connectedFrIndices.includes(fr));
 }
 
 function isLockFresh(lockedAt: Date | null): boolean {

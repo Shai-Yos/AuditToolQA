@@ -18,7 +18,7 @@ export default async function UserLayout({
 
   const [logoConfig, canAccessRegulatoryImplementation] = await Promise.all([
     db.appConfig.findUnique({ where: { key: "appLogo" } }),
-    hasRegulatoryImplementationAccess(user.id),
+    hasRegulatoryImplementationAccess(user.id, { allowGraphFallback: false }),
   ]);
 
   return (

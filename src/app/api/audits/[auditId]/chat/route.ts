@@ -4,7 +4,6 @@ import { requireUser } from "@/server/helpers/currentUser";
 import {
   roleForChannel,
   canAccessTranscription,
-  canAccessComm,
   buildUserRolesFromJson,
 } from "@/server/lib/roomRoles";
 import { createNotifications } from "@/server/helpers/notifications";
@@ -148,6 +147,7 @@ export async function POST(
   const effectiveRole = privilege.roomRolesJson
     ? buildUserRolesFromJson(privilege.roomRolesJson).get(user.id) ?? privilege.assignee?.role ?? ""
     : privilege.assignee?.role ?? "";
+
   if (user.role !== "ADMIN" && !isAuditOwnerOfThis) {
     if (!privilege.assignee) {
       return NextResponse.json({ error: "Not authorized for this audit" }, { status: 403 });
@@ -157,12 +157,6 @@ export async function POST(
       const frNum = parseInt(channel.replace("fr", "").replace("-transcription", ""), 10);
       if (!canAccessTranscription(effectiveRole, frNum)) {
         return NextResponse.json({ error: "Transcription access denied" }, { status: 403 });
-      }
-    }
-    if (channel.endsWith("-comm")) {
-      const frNum = parseInt(channel.replace("fr", "").replace("-comm", ""), 10);
-      if (!canAccessComm(effectiveRole, frNum, privilege.roomRolesJson)) {
-        return NextResponse.json({ error: "Not assigned to this room" }, { status: 403 });
       }
     }
   }
