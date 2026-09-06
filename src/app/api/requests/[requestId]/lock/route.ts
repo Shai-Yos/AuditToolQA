@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/server/db";
 import { requireUser } from "@/server/helpers/currentUser";
+import { canForceUnlockRequest } from "@/server/lib/requestLockPermissions";
+import { emitRequestEvent } from "@/server/lib/event-bus";
 
 const LOCK_TTL_MS = 30_000; // lock expires after 30s without a heartbeat
 
@@ -48,26 +50,41 @@ export async function POST(
   const body = (await req.json()) as { userName?: string };
   const userName = body.userName ?? user.name ?? user.email ?? user.id;
 
-  const request = await db.request.findUnique({
-    where: { id: requestId },
-    select: { lockedBy: true, lockedByName: true, lockedAt: true },
+  const now = new Date();
+  const staleBefore = new Date(now.getTime() - LOCK_TTL_MS);
+
+  const result = await db.request.updateMany({
+    where: {
+      id: requestId,
+      OR: [
+        { lockedBy: null },
+        { lockedBy: user.id },
+        { lockedAt: null },
+        { lockedAt: { lte: staleBefore } },
+      ],
+    },
+    data: { lockedBy: user.id, lockedByName: userName, lockedAt: now },
   });
 
-  if (!request) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (result.count === 0) {
+    const request = await db.request.findUnique({
+      where: { id: requestId },
+      select: { lockedBy: true, lockedByName: true, lockedAt: true },
+    });
 
-  // If someone else holds a fresh lock, reject
-  if (request.lockedBy && request.lockedBy !== user.id && isLockFresh(request.lockedAt)) {
-    return NextResponse.json(
-      { error: "locked", lockedByName: request.lockedByName },
-      { status: 409 }
-    );
+    if (!request) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+    if (request.lockedBy && request.lockedBy !== user.id && isLockFresh(request.lockedAt)) {
+      return NextResponse.json(
+        { error: "locked", lockedByName: request.lockedByName },
+        { status: 409 }
+      );
+    }
+
+    return NextResponse.json({ error: "Could not acquire lock, retry shortly" }, { status: 409 });
   }
 
-  // Acquire (or re-acquire) the lock
-  await db.request.update({
-    where: { id: requestId },
-    data: { lockedBy: user.id, lockedByName: userName, lockedAt: new Date() },
-  });
+  emitRequestEvent(requestId, "lock");
 
   return NextResponse.json({ ok: true });
 }
@@ -94,9 +111,15 @@ export async function PATCH(
 
     const request = await db.request.findUnique({
       where: { id: requestId },
-      select: { id: true },
+      select: { id: true, lockedBy: true, lockedByName: true, lockedAt: true },
     });
     if (!request) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    if (request.lockedBy && request.lockedBy !== user.id && isLockFresh(request.lockedAt)) {
+      return NextResponse.json(
+        { error: "locked", lockedByName: request.lockedByName },
+        { status: 409 }
+      );
+    }
     return NextResponse.json({ error: "Not your lock" }, { status: 403 });
   } catch (error) {
     if (isPoolTimeoutError(error)) {
@@ -108,26 +131,62 @@ export async function PATCH(
 
 // DELETE — release lock
 export async function DELETE(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ requestId: string }> }
 ) {
   const { requestId } = await params;
   let user;
   try { user = await requireUser(); } catch { return NextResponse.json({ error: "Unauthorized" }, { status: 401 }); }
 
+  const force = req.nextUrl.searchParams.get("force") === "1";
   const request = await db.request.findUnique({
     where: { id: requestId },
-    select: { lockedBy: true },
+    select: {
+      lockedBy: true,
+      labels: true,
+      audit: { select: { createdById: true, roomRolesJson: true } },
+    },
   });
 
   if (!request) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  // Only release if you own the lock
+
+  // Normal unload/unmount release is intentionally permissive and silent.
   if (request.lockedBy === user.id) {
     await db.request.update({
       where: { id: requestId },
       data: { lockedBy: null, lockedByName: null, lockedAt: null },
     });
+    emitRequestEvent(requestId, "lock");
+    return NextResponse.json({ ok: true });
   }
 
-  return NextResponse.json({ ok: true });
+  if (!force) return NextResponse.json({ ok: true });
+
+  let labels: string[] = [];
+  try {
+    labels = JSON.parse(request.labels) as string[];
+  } catch {
+    labels = [];
+  }
+
+  const canForce = canForceUnlockRequest({
+    userId: user.id,
+    userRole: user.role,
+    auditCreatedById: request.audit.createdById,
+    roomRolesJson: request.audit.roomRolesJson,
+    requestLabels: labels,
+  });
+
+  if (!canForce) {
+    return NextResponse.json({ error: "Not allowed to force unlock" }, { status: 403 });
+  }
+
+  await db.request.update({
+    where: { id: requestId },
+    data: { lockedBy: null, lockedByName: null, lockedAt: null },
+  });
+
+  emitRequestEvent(requestId, "lock");
+
+  return NextResponse.json({ ok: true, forceReleased: true });
 }

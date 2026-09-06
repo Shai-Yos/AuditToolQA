@@ -1,6 +1,7 @@
 import { db } from "~/server/db";
 import { notFound } from "next/navigation";
 import { requireUser } from "~/server/helpers/currentUser";
+import { canForceUnlockRequest } from "~/server/lib/requestLockPermissions";
 import RequestUI from "./ui";
 
 export default async function Page({
@@ -22,6 +23,8 @@ export default async function Page({
             id: true,
             title: true,
             trackId: true,
+            createdById: true,
+            roomRolesJson: true,
             frontRoomsCount: true,
             requestStatuses: { orderBy: { order: "asc" }, select: { id: true, name: true, order: true } },
           },
@@ -41,6 +44,15 @@ export default async function Page({
 
   if (!request) return notFound();
 
+  const requestLabels = JSON.parse(request.labels) as string[];
+  const canForceUnlock = canForceUnlockRequest({
+    userId: currentUser.id,
+    userRole: currentUser.role,
+    auditCreatedById: request.audit.createdById,
+    roomRolesJson: request.audit.roomRolesJson,
+    requestLabels,
+  });
+
   return (
     <RequestUI
       auditId={request.audit.id}
@@ -51,7 +63,7 @@ export default async function Page({
         id: request.id,
         title: request.title,
         trackNumber: request.trackNumber ?? null,
-        labels: JSON.parse(request.labels) as string[],
+        labels: requestLabels,
         isFormal: request.isFormal,
         statusColumnId: request.requestStatusId,
         documents: request.documents.map((d) => ({ id: d.id, filename: d.filename, url: d.url })),
@@ -68,6 +80,7 @@ export default async function Page({
       currentUserId={currentUser.id}
       currentUserName={currentUser.name ?? currentUser.email ?? currentUser.id}
       currentUserImage={currentUser.image ?? null}
+      canForceUnlock={canForceUnlock}
       comments={comments.map((c) => ({ id: c.id, authorId: c.authorId, authorName: c.authorName, authorImage: c.authorImage, text: c.text, createdAt: c.createdAt.toISOString() }))}
     />
   );

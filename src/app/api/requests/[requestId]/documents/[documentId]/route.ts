@@ -8,25 +8,47 @@ import {
   deleteOneDriveFile,
   deleteLocalFile,
 } from "@/server/lib/oneDriveClient";
+import { requireUser } from "~/server/helpers/currentUser";
+import { canUserEditWithLock, lockDeniedMessage } from "~/server/lib/requestLockPermissions";
 
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ requestId: string; documentId: string }> }
 ) {
   try {
+    const currentUser = await requireUser();
     const { requestId, documentId } = await params;
     const url = new URL(request.url);
     const auditId = url.searchParams.get("auditId");
 
-    // Find the document
-    const document = await db.document.findUnique({
-      where: { id: documentId },
-    });
+    const [document, requestLock] = await Promise.all([
+      db.document.findUnique({
+        where: { id: documentId },
+      }),
+      db.request.findUnique({
+        where: { id: requestId },
+        select: { lockedBy: true, lockedByName: true, lockedAt: true },
+      }),
+    ]);
 
     if (!document) {
       return NextResponse.json(
         { error: "Document not found" },
         { status: 404 }
+      );
+    }
+
+    if (!requestLock) {
+      return NextResponse.json(
+        { error: "Request not found" },
+        { status: 404 },
+      );
+    }
+
+    if (!canUserEditWithLock(requestLock, currentUser.id)) {
+      return NextResponse.json(
+        { error: lockDeniedMessage(requestLock.lockedByName) },
+        { status: 423 },
       );
     }
 

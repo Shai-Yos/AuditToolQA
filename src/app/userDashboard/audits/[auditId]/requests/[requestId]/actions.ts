@@ -8,6 +8,7 @@ import { computeClosedAt } from "~/server/lib/requestStatus";
 import { getUserPhoto, sendMailViaGraph } from "~/server/lib/graphClient";
 import { syncRequestBucketToPlanner, syncRequestCategoriesToPlanner, syncRequestDueDateToPlanner } from "~/server/lib/planner";
 import { env } from "~/env";
+import { canUserEditWithLock, lockDeniedMessage } from "~/server/lib/requestLockPermissions";
 
 type State = { ok: true } | { ok: false; error: string };
 
@@ -43,6 +44,7 @@ function resolveAppBaseUrl(): string {
 }
 
 export async function updateRequestBasic(_: State, input: FormData | UpdateRequestBasicInput): Promise<State> {
+  const currentUser = await requireUser();
   let auditId: string, requestId: string, title: string, isFormal: boolean, statusColumnId: string, frLabel: string, labelValues: string[];
   let estimatedDeliveryDate: Date | null | undefined;
 
@@ -86,9 +88,14 @@ export async function updateRequestBasic(_: State, input: FormData | UpdateReque
   if (!requestStatus) return { ok: false, error: "Invalid status selected." };
 
   const [existing, audit] = await Promise.all([
-    db.request.findUnique({ where: { id: requestId }, select: { trackNumber: true, statusName: true, closedAt: true } }),
+    db.request.findUnique({ where: { id: requestId }, select: { trackNumber: true, statusName: true, closedAt: true, lockedBy: true, lockedByName: true, lockedAt: true } }),
     db.audit.findUnique({ where: { id: auditId }, select: { title: true } }),
   ]);
+
+  if (!existing) return { ok: false, error: "Request not found." };
+  if (!canUserEditWithLock(existing, currentUser.id)) {
+    return { ok: false, error: lockDeniedMessage(existing.lockedByName) };
+  }
 
   const updatedTrackNumber = withUpdatedTrackTitle(existing?.trackNumber ?? null, title);
 
@@ -116,8 +123,6 @@ export async function updateRequestBasic(_: State, input: FormData | UpdateReque
     where: { requestId },
     data: { requestTitle: title },
   });
-
-  const currentUser = await requireUser();
 
   // Notify assignees of this request about the update
   const requestAssignees = await db.requestAssignee.findMany({
@@ -150,6 +155,7 @@ export async function updateRequestBasic(_: State, input: FormData | UpdateReque
 }
 
 export async function updateRequestAssignees(_: State, input: FormData | UpdateRequestAssigneesInput): Promise<State> {
+  const currentUser = await requireUser();
   let auditId: string, requestId: string, selected: string[];
   let userMeta: Record<string, { name?: string; email?: string }> = {};
 
@@ -174,10 +180,17 @@ export async function updateRequestAssignees(_: State, input: FormData | UpdateR
         trackNumber: true,
         title: true,
         auditTitle: true,
+        lockedBy: true,
+        lockedByName: true,
+        lockedAt: true,
         audit: { select: { title: true } },
       },
     }),
   ]);
+  if (!req) return { ok: false, error: "Request not found." };
+  if (!canUserEditWithLock(req, currentUser.id)) {
+    return { ok: false, error: lockDeniedMessage(req.lockedByName) };
+  }
   const oldIds = oldAssignees.map(a => a.userId);
   const addedIds = selected.filter(id => !oldIds.includes(id));
   const removedIds = oldIds.filter(id => !selected.includes(id));
@@ -238,7 +251,6 @@ export async function updateRequestAssignees(_: State, input: FormData | UpdateR
     });
   }
 
-  const currentUser = await requireUser();
   const targetTitle = req?.trackNumber ?? req?.title ?? requestId;
   const auditTitle = resolvedAuditName;
 

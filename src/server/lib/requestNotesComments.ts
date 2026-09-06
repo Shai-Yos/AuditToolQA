@@ -6,12 +6,22 @@ import { revalidatePath } from "next/cache";
 import { createNotifications } from "~/server/helpers/notifications";
 import { emitRequestEvent } from "~/server/lib/event-bus";
 import { syncRequestCommentToPlanner, syncRequestNoteToPlanner } from "~/server/lib/planner";
+import { canUserEditWithLock, lockDeniedMessage } from "~/server/lib/requestLockPermissions";
 
 // ─── Notes ───────────────────────────────────────────────────────────────────
 
 export async function saveRequestNote(requestId: string, auditId: string, text: string) {
   const currentUser = await requireUser();
   const authorName = currentUser.name ?? currentUser.email ?? "Unknown";
+
+  const request = await db.request.findUnique({
+    where: { id: requestId },
+    select: { lockedBy: true, lockedByName: true, lockedAt: true },
+  });
+  if (!request) return { ok: false as const, error: "Request not found." };
+  if (!canUserEditWithLock(request, currentUser.id)) {
+    return { ok: false as const, error: lockDeniedMessage(request.lockedByName) };
+  }
 
   await db.request.update({
     where: { id: requestId },
@@ -35,6 +45,15 @@ export async function saveRequestNote(requestId: string, auditId: string, text: 
 export async function addRequestComment(requestId: string, auditId: string, text: string) {
   const currentUser = await requireUser();
   if (!text.trim()) return { ok: false as const, error: "Comment cannot be empty." };
+
+  const requestLock = await db.request.findUnique({
+    where: { id: requestId },
+    select: { lockedBy: true, lockedByName: true, lockedAt: true },
+  });
+  if (!requestLock) return { ok: false as const, error: "Request not found." };
+  if (!canUserEditWithLock(requestLock, currentUser.id)) {
+    return { ok: false as const, error: lockDeniedMessage(requestLock.lockedByName) };
+  }
 
   const trimmed = text.trim();
 
@@ -154,6 +173,16 @@ export async function addRequestComment(requestId: string, auditId: string, text
 
 export async function deleteRequestComment(commentId: string, requestId: string, auditId: string) {
   const currentUser = await requireUser();
+
+  const requestLock = await db.request.findUnique({
+    where: { id: requestId },
+    select: { lockedBy: true, lockedByName: true, lockedAt: true },
+  });
+  if (!requestLock) return { ok: false as const, error: "Request not found." };
+  if (!canUserEditWithLock(requestLock, currentUser.id)) {
+    return { ok: false as const, error: lockDeniedMessage(requestLock.lockedByName) };
+  }
+
   const comment = await db.requestComment.findUnique({ where: { id: commentId }, select: { authorId: true } });
   if (!comment) return { ok: false as const, error: "Comment not found." };
   if (comment.authorId !== currentUser.id && currentUser.role !== "ADMIN") {

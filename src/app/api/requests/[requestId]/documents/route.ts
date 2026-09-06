@@ -4,12 +4,15 @@ import { db } from "~/server/db";
 import { revalidatePath } from "next/cache";
 import { uploadFile } from "@/server/lib/oneDriveClient";
 import { syncDocumentToPlanner, getDelegatedGraphToken } from "@/server/lib/planner";
+import { requireUser } from "~/server/helpers/currentUser";
+import { canUserEditWithLock, lockDeniedMessage } from "~/server/lib/requestLockPermissions";
 
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ requestId: string }> }
 ) {
   try {
+    const currentUser = await requireUser();
     const { requestId } = await params;
     const formData = await request.formData();
     const files = formData.getAll("files") as File[];
@@ -25,12 +28,27 @@ export async function POST(
     // Verify request exists
     const existingRequest = await db.request.findUnique({
       where: { id: requestId },
+      select: {
+        id: true,
+        title: true,
+        trackNumber: true,
+        lockedBy: true,
+        lockedByName: true,
+        lockedAt: true,
+      },
     });
 
     if (!existingRequest) {
       return NextResponse.json(
         { error: "Request not found" },
         { status: 404 }
+      );
+    }
+
+    if (!canUserEditWithLock(existingRequest, currentUser.id)) {
+      return NextResponse.json(
+        { error: lockDeniedMessage(existingRequest.lockedByName) },
+        { status: 423 },
       );
     }
 

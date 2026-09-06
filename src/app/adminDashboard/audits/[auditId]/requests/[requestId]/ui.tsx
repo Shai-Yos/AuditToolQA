@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, useTransition, useCallback } from "react";
+import { useEffect, useState, useTransition, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { updateRequestAssignees, updateRequestBasic, type UpdateRequestBasicInput, type UpdateRequestAssigneesInput } from "./actions";
 import { useAuditNav } from "@/components/audit-nav-context";
@@ -64,6 +64,18 @@ function getInitials(name: string) {
   return (((parts[0]?.[0] ?? "") + (parts[parts.length - 1]?.[0] ?? "")).toUpperCase() || "?");
 }
 
+function formatUtcTimestamp(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const dd = String(date.getUTCDate()).padStart(2, "0");
+  const mm = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const yyyy = String(date.getUTCFullYear());
+  const hh = String(date.getUTCHours()).padStart(2, "0");
+  const min = String(date.getUTCMinutes()).padStart(2, "0");
+  const ss = String(date.getUTCSeconds()).padStart(2, "0");
+  return `${dd}/${mm}/${yyyy}, ${hh}:${min}:${ss}`;
+}
+
 function PersonAvatar({ name, src, size = "sm" }: { name: string; src?: string | null; size?: "sm" | "md" }) {
   const [failed, setFailed] = useState(false);
   const inits = getInitials(name);
@@ -95,6 +107,7 @@ export default function RequestUI({
   currentUserId,
   currentUserName,
   currentUserImage,
+  canForceUnlock = false,
 }: {
   auditId: string;
   auditTitle: string;
@@ -118,6 +131,7 @@ export default function RequestUI({
   currentUserId: string;
   currentUserName: string;
   currentUserImage: string | null;
+  canForceUnlock?: boolean;
 }) {
   const router = useRouter();
   const { setActiveAudit } = useAuditNav();
@@ -126,20 +140,73 @@ export default function RequestUI({
     router.back();
   };
 
+  const releaseUrl = `/api/requests/${request.id}/lock`;
   const [lockState, setLockState] = useState<"checking" | "owned" | "blocked" | "error">("checking");
   const [lockOwner, setLockOwner] = useState<string | null>(null);
+  const [lockRetryToken, setLockRetryToken] = useState(0);
+  const [forceUnlockPending, setForceUnlockPending] = useState(false);
+  const [forceUnlockError, setForceUnlockError] = useState<string | null>(null);
+  const lockStateRef = useRef(lockState);
+  const suppressLockReacquireRef = useRef(false);
+
+  useEffect(() => {
+    lockStateRef.current = lockState;
+  }, [lockState]);
+
+  const refreshLockIfBlocked = useCallback(async () => {
+    if (suppressLockReacquireRef.current) return;
+    try {
+      const res = await fetch(releaseUrl, { method: "GET", cache: "no-store" });
+      if (!res.ok) return;
+      const data = (await res.json()) as { locked: boolean; lockedByName?: string | null };
+      if (data.locked) {
+        setLockOwner(data.lockedByName ?? "Another user");
+        setLockState("blocked");
+        return;
+      }
+      setLockOwner(null);
+      setLockState("blocked");
+    } catch {
+      // Ignore transient failures; next lock event or heartbeat will retry.
+    }
+  }, [releaseUrl]);
+
+  const requestLockManually = useCallback(() => {
+    if (suppressLockReacquireRef.current || forceUnlockPending) return;
+    setLockOwner(null);
+    setLockState("checking");
+    setLockRetryToken((prev) => prev + 1);
+  }, [forceUnlockPending]);
+
+  const verifyOwnedLock = useCallback(async () => {
+    try {
+      const hb = await fetch(releaseUrl, { method: "PATCH", keepalive: true });
+      if (hb.ok) return;
+
+      const data = (await hb.json().catch(() => null)) as { lockedByName?: string } | null;
+      if (data?.lockedByName) {
+        setLockOwner(data.lockedByName);
+        setLockState("blocked");
+      } else {
+        setLockOwner(null);
+        setLockState("blocked");
+      }
+    } catch {
+      // Ignore transient failures; regular heartbeat will retry.
+    }
+  }, [releaseUrl]);
 
   // Page lock: hold lock while this page is open (check happens before navigation on the kanban)
   useEffect(() => {
     let heartbeat: ReturnType<typeof setInterval>;
     let ownsLock = false;
-    const releaseUrl = `/api/requests/${request.id}/lock`;
     const releaseLock = () => {
       if (!ownsLock) return;
       // keepalive ensures the request survives page unload / component unmount
       fetch(releaseUrl, { method: "DELETE", keepalive: true }).catch(() => {});
     };
     const acquire = async () => {
+      if (suppressLockReacquireRef.current) return;
       try {
         const res = await fetch(releaseUrl, {
           method: "POST",
@@ -157,10 +224,30 @@ export default function RequestUI({
           return;
         }
         ownsLock = true;
+        setForceUnlockError(null);
+        setLockOwner(null);
         setLockState("owned");
         // Heartbeat every 10s to keep lock alive (TTL is 30s)
         heartbeat = setInterval(() => {
-          fetch(releaseUrl, { method: "PATCH", keepalive: true }).catch(() => {});
+          void (async () => {
+            try {
+              const hb = await fetch(releaseUrl, { method: "PATCH", keepalive: true });
+              if (!hb.ok) {
+                const data = (await hb.json().catch(() => null)) as { lockedByName?: string } | null;
+                ownsLock = false;
+                clearInterval(heartbeat);
+                if (data?.lockedByName) {
+                  setLockOwner(data.lockedByName);
+                  setLockState("blocked");
+                } else {
+                  setLockOwner(null);
+                  setLockState("blocked");
+                }
+              }
+            } catch {
+              // Ignore transient network failures; lock TTL protects consistency.
+            }
+          })();
         }, 10_000);
       } catch {
         setLockState("error");
@@ -175,7 +262,27 @@ export default function RequestUI({
       releaseLock();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [request.id]);
+  }, [request.id, lockRetryToken]);
+
+  const forceUnlockAndExit = async () => {
+    if (!canForceUnlock || forceUnlockPending) return;
+    suppressLockReacquireRef.current = true;
+    setForceUnlockError(null);
+    setForceUnlockPending(true);
+    try {
+      const res = await fetch(`${releaseUrl}?force=1`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => null)) as { error?: string } | null;
+        setForceUnlockError(data?.error ?? "Could not unlock this request.");
+        return;
+      }
+      router.replace(`/adminDashboard/audits/${auditId}/requests`);
+    } catch {
+      setForceUnlockError("Could not unlock this request.");
+    } finally {
+      setForceUnlockPending(false);
+    }
+  };
 
   useEffect(() => {
     setActiveAudit({ id: auditId, title: auditTitle, tab: "requests", activeRequestId: request.id, activeRequestTitle: request.trackNumber ?? request.title });
@@ -279,11 +386,15 @@ export default function RequestUI({
     const es = new EventSource(`/api/stream/request/${request.id}`);
     es.onmessage = (e) => {
       if (e.data === "comments" || e.data === "notes") void fetchCommentsNotes();
+      if (e.data === "lock" && lockStateRef.current === "blocked" && !suppressLockReacquireRef.current) {
+        void refreshLockIfBlocked();
+      }
+      if (e.data === "lock" && lockStateRef.current === "owned") void verifyOwnedLock();
     };
     const onVisible = () => { if (!document.hidden) void fetchCommentsNotes(); };
     document.addEventListener("visibilitychange", onVisible);
     return () => { es.close(); document.removeEventListener("visibilitychange", onVisible); };
-  }, [request.id, fetchCommentsNotes]);
+  }, [request.id, fetchCommentsNotes, refreshLockIfBlocked, verifyOwnedLock]);
 
   useEffect(() => {
     if (basicState.ok) {
@@ -319,11 +430,44 @@ export default function RequestUI({
         auditTrackId,
       }} />
       {lockState === "blocked" && lockOwner && (
-        <div className="print:hidden flex items-center gap-3 bg-amber-50 border-b border-amber-200 px-6 py-3">
-          <span className="text-lg">🔒</span>
-          <p className="text-sm font-semibold text-amber-800">
-            Read-only: <span className="font-bold">{lockOwner ?? "Another user"}</span> is currently editing this request.
-          </p>
+        <div className="print:hidden border-b border-amber-200 bg-amber-50 px-6 py-3 dark:border-amber-800 dark:bg-amber-950/60 lg:pr-40">
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
+            <span className="text-lg self-center sm:self-center">🔒</span>
+            <p className="text-sm font-semibold text-amber-800 dark:text-amber-200">
+              <span className="block sm:inline">Read-only:</span>
+              <span className="block break-words font-bold sm:ml-1 sm:inline">{lockOwner}</span>
+              <span className="block sm:ml-1 sm:inline">is currently editing this request.</span>
+            </p>
+            {canForceUnlock && (
+              <button
+                type="button"
+                onClick={() => { void forceUnlockAndExit(); }}
+                disabled={forceUnlockPending}
+                className="w-full rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-semibold text-amber-900 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-amber-600 dark:bg-amber-900 dark:text-amber-100 dark:hover:bg-amber-800 sm:ml-auto sm:w-auto sm:py-1.5"
+              >
+                {forceUnlockPending ? "Unlocking..." : "Unlock for others"}
+              </button>
+            )}
+          </div>
+          {forceUnlockError && <p className="mt-2 text-xs font-medium text-red-700">{forceUnlockError}</p>}
+        </div>
+      )}
+      {lockState === "blocked" && !lockOwner && (
+        <div className="print:hidden border-b border-sky-200 bg-sky-50 px-6 py-3 dark:border-sky-800 dark:bg-sky-950/60 lg:pr-40">
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
+            <span className="text-lg self-center sm:self-center">🔓</span>
+            <p className="text-sm font-semibold text-sky-800 dark:text-sky-200">
+              This request is available. Click Start editing to take the lock.
+            </p>
+            <button
+              type="button"
+              onClick={requestLockManually}
+              disabled={forceUnlockPending}
+              className="w-full rounded-lg border border-sky-300 bg-white px-3 py-2 text-xs font-semibold text-sky-900 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-sky-600 dark:bg-sky-900 dark:text-sky-100 dark:hover:bg-sky-800 sm:ml-auto sm:w-auto sm:py-1.5"
+            >
+              Start editing
+            </button>
+          </div>
         </div>
       )}
       <div className="mx-auto max-w-4xl px-6 py-8">
@@ -794,7 +938,7 @@ export default function RequestUI({
             <h2 className="text-sm font-bold text-slate-900">📝 Notes</h2>
             {noteLastEditor && noteLastSaved && (
               <span className="text-[10px] text-slate-400">
-                Last edited by {noteLastEditor} · {new Date(noteLastSaved).toLocaleString(undefined, { timeZone: "UTC" })} UTC
+                Last edited by {noteLastEditor} · {formatUtcTimestamp(noteLastSaved)} UTC
               </span>
             )}
           </div>
@@ -821,6 +965,8 @@ export default function RequestUI({
                 if (result.ok) {
                   setNoteLastSaved(new Date().toISOString());
                   setNoteLastEditor("You");
+                } else {
+                  alert(result.error);
                 }
               }}
               className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white hover:bg-slate-800 disabled:opacity-60"
@@ -850,7 +996,7 @@ export default function RequestUI({
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-semibold text-slate-700">{comment.authorName}</span>
                     <div className="flex items-center gap-2">
-                      <span className="text-[10px] text-slate-400">{new Date(comment.createdAt).toLocaleString(undefined, { timeZone: "UTC" })} UTC</span>
+                      <span className="text-[10px] text-slate-400">{formatUtcTimestamp(comment.createdAt)} UTC</span>
                       {comment.authorId === currentUserId && (
                       <button
                         type="button"
