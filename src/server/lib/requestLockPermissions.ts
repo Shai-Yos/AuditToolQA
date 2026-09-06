@@ -10,6 +10,10 @@ type PermissionInput = {
   requestLabels: string[];
 };
 
+function hasFrOrBrLeadRole(roleString: string): boolean {
+  return /\b(?:FR|BR)\d+\s+Lead\b/i.test(roleString);
+}
+
 export function canForceUnlockRequest(input: PermissionInput): boolean {
   const { userId, userRole, auditCreatedById, roomRolesJson } = input;
 
@@ -19,7 +23,14 @@ export function canForceUnlockRequest(input: PermissionInput): boolean {
   if (!roomRolesJson) return false;
 
   try {
-    return buildUserRolesFromJson(roomRolesJson).has(userId);
+    const roleString = buildUserRolesFromJson(roomRolesJson).get(userId) ?? "";
+    if (!roleString) return false;
+
+    if (userRole === "AUDIT_OWNER") {
+      return hasFrOrBrLeadRole(roleString);
+    }
+
+    return true;
   } catch {
     return false;
   }
