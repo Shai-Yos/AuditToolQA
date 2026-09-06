@@ -5,7 +5,7 @@ const LOCK_TTL_MS = 30_000;
 type PermissionInput = {
   userId: string;
   userRole: string;
-  auditCreatedById: string;
+  auditCreatedById: string | null;
   roomRolesJson: string | null;
   requestLabels: string[];
 };
