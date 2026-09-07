@@ -6,7 +6,7 @@ import { requireUser } from "~/server/helpers/currentUser";
 import { logActivity } from "~/server/helpers/logActivity";
 import { computeClosedAt } from "~/server/lib/requestStatus";
 import { getUserPhoto, sendMailViaGraph } from "~/server/lib/graphClient";
-import { syncRequestBucketToPlanner, syncRequestCategoriesToPlanner, syncRequestDueDateToPlanner } from "~/server/lib/planner";
+import { syncRequestAssigneesToPlanner, syncRequestBucketToPlanner, syncRequestCategoriesToPlanner, syncRequestEtaToPlannerNotes } from "~/server/lib/planner";
 import { env } from "~/env";
 import { canUserEditWithLock, lockDeniedMessage } from "~/server/lib/requestLockPermissions";
 
@@ -146,7 +146,7 @@ export async function updateRequestBasic(_: State, input: FormData | UpdateReque
 
   void syncRequestBucketToPlanner(requestId, requestStatus.name);
   void syncRequestCategoriesToPlanner(requestId, labels, isFormal);
-  void syncRequestDueDateToPlanner(requestId, estimatedDeliveryDate ?? null);
+  void syncRequestEtaToPlannerNotes(requestId);
   revalidatePath(`/userDashboard/audits/${auditId}`);
   revalidatePath(`/userDashboard/audits/${auditId}/kanbanBoard`);
   revalidatePath(`/userDashboard/audits/${auditId}/requests`);
@@ -169,6 +169,8 @@ export async function updateRequestAssignees(_: State, input: FormData | UpdateR
     selected = input.assigneeIds || [];
     userMeta = input.userMeta ?? {};
   }
+
+  selected = Array.from(new Set(selected.filter(Boolean)));
 
   if (!auditId || !requestId) return { ok: false, error: "Missing ids." };
 
@@ -306,6 +308,8 @@ export async function updateRequestAssignees(_: State, input: FormData | UpdateR
       notifyUserIds: removedIds,
     });
   }
+
+  void syncRequestAssigneesToPlanner(requestId, selected);
 
   revalidatePath(`/userDashboard/audits/${auditId}/kanbanBoard`);
   revalidatePath(`/userDashboard/audits/${auditId}/requests`);

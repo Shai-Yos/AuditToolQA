@@ -41,6 +41,7 @@ export default function MentionTextarea({
   placeholder,
   value,
   onChange,
+  onPeopleDiscovered,
   onKeyDown: externalKeyDown,
   rows = 2,
   className,
@@ -49,6 +50,7 @@ export default function MentionTextarea({
   placeholder?: string;
   value: string;
   onChange: (value: string) => void;
+  onPeopleDiscovered?: (people: Person[]) => void;
   onKeyDown?: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
   rows?: number;
   className?: string;
@@ -58,11 +60,77 @@ export default function MentionTextarea({
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [mentionStartIndex, setMentionStartIndex] = useState(0);
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [remotePeople, setRemotePeople] = useState<Person[]>([]);
+  const [remoteLoading, setRemoteLoading] = useState(false);
 
-  const filteredPeople =
+  const localPeople =
     mentionQuery !== null
       ? people.filter((p) => p.name.toLowerCase().includes(mentionQuery.toLowerCase())).slice(0, 8)
       : [];
+
+  useEffect(() => {
+    if (mentionQuery === null) {
+      setRemotePeople([]);
+      setRemoteLoading(false);
+      return;
+    }
+
+    const q = mentionQuery.trim();
+    if (q.length < 2) {
+      setRemotePeople([]);
+      setRemoteLoading(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    let cancelled = false;
+    const t = setTimeout(() => {
+      void (async () => {
+        setRemoteLoading(true);
+        try {
+          const res = await fetch(`/api/users/search?q=${encodeURIComponent(q)}`, {
+            cache: "no-store",
+            signal: controller.signal,
+          });
+          if (!res.ok) throw new Error("search failed");
+          const data = (await res.json()) as {
+            users?: Array<{ id: string; name: string; image?: string | null }>;
+          };
+          if (!cancelled) {
+            const discovered = (data.users ?? []).map((u) => ({
+                id: u.id,
+                name: u.name,
+                image: u.image ?? null,
+              }));
+            setRemotePeople(discovered);
+            onPeopleDiscovered?.(discovered);
+          }
+        } catch {
+          if (!cancelled) setRemotePeople([]);
+        } finally {
+          if (!cancelled) setRemoteLoading(false);
+        }
+      })();
+    }, 220);
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+      clearTimeout(t);
+    };
+  }, [mentionQuery, onPeopleDiscovered]);
+
+  const filteredPeople =
+    mentionQuery === null
+      ? []
+      : (() => {
+          const merged = new Map<string, Person>();
+          for (const p of remotePeople) merged.set(p.id, p);
+          for (const p of localPeople) {
+            if (!merged.has(p.id)) merged.set(p.id, p);
+          }
+          return [...merged.values()].slice(0, 8);
+        })();
 
   const detectMention = useCallback((text: string, cursorPos: number) => {
     const beforeCursor = text.slice(0, cursorPos);
@@ -155,30 +223,34 @@ export default function MentionTextarea({
         rows={rows}
         className={className}
       />
-      {mentionQuery !== null && filteredPeople.length > 0 && (
+      {mentionQuery !== null && (filteredPeople.length > 0 || remoteLoading) && (
         <div className="absolute bottom-full left-0 z-50 mb-1 w-72 max-h-48 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-lg">
-          {filteredPeople.map((p, i) => (
-            <button
-              key={p.id}
-              type="button"
-              onMouseDown={(e) => {
-                e.preventDefault();
-                insertMention(p);
-              }}
-              className={`flex w-full items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 ${
-                i === selectedIndex ? "bg-blue-50" : ""
-              }`}
-            >
-              <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full bg-slate-700 ring-1 ring-slate-200">
-                {p.image ? (
-                  <img src={p.image} alt={p.name} className="h-full w-full object-cover" />
-                ) : (
-                  <span className="text-[9px] font-bold text-white">{getInitials(p.name)}</span>
-                )}
-              </span>
-              <span className="truncate">{p.name}</span>
-            </button>
-          ))}
+          {filteredPeople.length === 0 && remoteLoading ? (
+            <p className="px-4 py-3 text-sm text-slate-400">Searching...</p>
+          ) : (
+            filteredPeople.map((p, i) => (
+              <button
+                key={p.id}
+                type="button"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  insertMention(p);
+                }}
+                className={`flex w-full items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 ${
+                  i === selectedIndex ? "bg-blue-50" : ""
+                }`}
+              >
+                <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full bg-slate-700 ring-1 ring-slate-200">
+                  {p.image ? (
+                    <img src={p.image} alt={p.name} className="h-full w-full object-cover" />
+                  ) : (
+                    <span className="text-[9px] font-bold text-white">{getInitials(p.name)}</span>
+                  )}
+                </span>
+                <span className="truncate">{p.name}</span>
+              </button>
+            ))
+          )}
         </div>
       )}
     </div>

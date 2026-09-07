@@ -361,6 +361,7 @@ export default function RequestUI({
   const [commentText, setCommentText] = useState("");
   const [commentSending, setCommentSending] = useState(false);
   const [liveComments, setLiveComments] = useState(comments);
+  const [mentionPeople, setMentionPeople] = useState(auditPeople);
   const [noteText, setNoteText] = useState(note.text);
   const [noteSaving, setNoteSaving] = useState(false);
   const [noteLastSaved, setNoteLastSaved] = useState(note.lastEditedAt);
@@ -410,6 +411,15 @@ export default function RequestUI({
       router.refresh();
     }
   }, [assignState.ok, router]);
+
+  useEffect(() => {
+    setMentionPeople((prev) => {
+      const merged = new Map<string, { id: string; name: string; image?: string | null }>();
+      for (const p of prev) merged.set(p.id, p);
+      for (const p of auditPeople) merged.set(p.id, p);
+      return [...merged.values()];
+    });
+  }, [auditPeople]);
 
   const isReadOnly = lockState !== "owned";
 
@@ -1021,7 +1031,7 @@ export default function RequestUI({
                       )}
                     </div>
                   </div>
-                  <p className="mt-1.5 whitespace-pre-wrap text-sm text-slate-600">{renderMentionText(comment.text, auditPeople)}</p>
+                  <p className="mt-1.5 whitespace-pre-wrap text-sm text-slate-600">{renderMentionText(comment.text, mentionPeople)}</p>
                 </div>
               </div>
             ))}
@@ -1066,7 +1076,16 @@ export default function RequestUI({
               </div>
             )}
             <MentionTextarea
-              people={auditPeople}
+              people={mentionPeople}
+              onPeopleDiscovered={(discovered) => {
+                if (discovered.length === 0) return;
+                setMentionPeople((prev) => {
+                  const merged = new Map<string, { id: string; name: string; image?: string | null }>();
+                  for (const p of prev) merged.set(p.id, p);
+                  for (const p of discovered) merged.set(p.id, p);
+                  return [...merged.values()];
+                });
+              }}
               value={commentText}
               onChange={setCommentText}
               onKeyDown={(e) => {

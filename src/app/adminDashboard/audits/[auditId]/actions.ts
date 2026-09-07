@@ -126,6 +126,8 @@ export async function cancelRequest(
       },
     });
 
+    void syncRequestBucketToPlanner(requestId, cancelledColumn.name);
+
     emitAuditEvent(auditId, "kanban");
     emitAuditTabCounts(auditId, await getAuditTabCounts(auditId));
     revalidatePath(`/adminDashboard/audits/${auditId}`);
@@ -185,6 +187,8 @@ export async function reworkRequest(
         auditTitle: request?.auditTitle ?? "",
       },
     });
+
+    void syncRequestBucketToPlanner(requestId, "Incoming");
 
     emitAuditEvent(auditId, "kanban");
     emitAuditTabCounts(auditId, await getAuditTabCounts(auditId));

@@ -86,13 +86,77 @@ function parseLabels(labelsJson: string, isFormal: boolean): string[] {
   }
 }
 
-function taskDescription(request: PlannerRequest): string {
-  const labels = parseLabels(request.labels, request.isFormal);
-  return [
-    `Audit: ${request.auditTitle || "Not specified"}`,
-    `Request: ${request.title}`,
-    ...(labels.length ? [`Labels: ${labels.join(", ")}`] : []),
-  ].join("\n");
+function taskEtaLine(estimatedDeliveryDate: Date | null): string {
+  if (!estimatedDeliveryDate) return "ETA: Not set";
+
+  const formatted = new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(estimatedDeliveryDate).toLowerCase();
+
+  return `ETA: ${formatted}`;
+}
+
+const NOTES_HEADER = "Notes:";
+const COMMENTS_HEADER = "Comments:";
+const ASSIGNEE_PREFIX = "This task is assigned to:";
+const ASSIGNEE_UNASSIGNED = "This task is currently unassigned.";
+const ETA_PREFIX = "ETA:";
+
+function isManagedBoundaryLine(line: string): boolean {
+  return (
+    line === NOTES_HEADER ||
+    line === COMMENTS_HEADER ||
+    line.startsWith(ETA_PREFIX) ||
+    line.startsWith(ASSIGNEE_PREFIX) ||
+    line === ASSIGNEE_UNASSIGNED
+  );
+}
+
+function getManagedSectionLines(description: string, header: string): string[] {
+  const lines = description.split(/\r?\n/);
+  const idx = lines.indexOf(header);
+  if (idx < 0) return [];
+
+  const section: string[] = [];
+  for (let i = idx + 1; i < lines.length; i++) {
+    const line = lines[i]!;
+    if (isManagedBoundaryLine(line)) break;
+    section.push(line);
+  }
+  return section;
+}
+
+function getManagedSingleLine(description: string, predicate: (line: string) => boolean): string | null {
+  for (const line of description.split(/\r?\n/)) {
+    if (predicate(line)) return line;
+  }
+  return null;
+}
+
+function buildManagedDescription(params: {
+  etaLine: string | null;
+  assigneeLine: string | null;
+  notesLines: string[];
+  commentLines: string[];
+}): string {
+  const out: string[] = [];
+
+  if (params.etaLine) out.push(params.etaLine);
+  if (params.assigneeLine) out.push(params.assigneeLine);
+
+  const notes = params.notesLines.length > 0 ? params.notesLines : ["Not set"];
+  if (out.length > 0) out.push("");
+  out.push(NOTES_HEADER, ...notes);
+
+  const comments = params.commentLines.filter((line) => line.trim().length > 0);
+  if (comments.length > 0) {
+    out.push("", COMMENTS_HEADER, ...comments);
+  }
+
+  return out.join("\n");
 }
 
 async function addTaskDescription(accessToken: string, taskId: string, description: string): Promise<void> {
@@ -207,7 +271,6 @@ export async function syncNewRequestToPlanner(request: PlannerRequest): Promise<
         planId: env.PLANNER_PLAN_ID,
         ...(env.PLANNER_BUCKET_ID ? { bucketId: env.PLANNER_BUCKET_ID } : {}),
         title: taskTitle(request),
-        ...(request.estimatedDeliveryDate ? { dueDateTime: request.estimatedDeliveryDate.toISOString() } : {}),
         ...(Object.keys(appliedCategories).length ? { appliedCategories } : {}),
       }),
     });
@@ -216,6 +279,11 @@ export async function syncNewRequestToPlanner(request: PlannerRequest): Promise<
       throw new Error(`Microsoft Graph returned ${response.status}: ${await response.text()}`);
     }
     const plannerTask = (await response.json()) as { id: string };
+    await addTaskDescription(
+      accessToken,
+      plannerTask.id,
+      taskEtaLine(request.estimatedDeliveryDate),
+    );
     await db.request.update({
       where: { id: request.id },
       data: { plannerTaskId: plannerTask.id, plannerSyncedAt: new Date(), plannerSyncError: null },
@@ -231,11 +299,10 @@ export async function syncNewRequestToPlanner(request: PlannerRequest): Promise<
 }
 
 /**
- * Syncs the current assignees of a request to the Planner task.
- * Replaces all existing Planner assignments with the current set.
- * azureUserIds must be the Azure OIDs of the assignees.
+ * Syncs assignee information to Planner task notes only.
+ * This does NOT modify Planner task assignments.
  */
-export async function syncRequestAssigneesToPlanner(requestId: string, azureUserIds: string[]): Promise<void> {
+export async function syncRequestAssigneesToPlanner(requestId: string, _azureUserIds: string[]): Promise<void> {
   if (!plannerEnabled()) return;
 
   try {
@@ -247,40 +314,44 @@ export async function syncRequestAssigneesToPlanner(requestId: string, azureUser
 
     const accessToken = await getDelegatedGraphToken();
 
-    // Fetch current task to get etag and existing assignments
-    const taskUrl = `https://graph.microsoft.com/v1.0/planner/tasks/${encodeURIComponent(req.plannerTaskId)}`;
-    const taskRes = await fetch(taskUrl, { headers: { Authorization: `Bearer ${accessToken}` } });
-    if (!taskRes.ok) return;
+    const assigneeRows = await db.requestAssignee.findMany({
+      where: { requestId },
+      select: { assigneeName: true },
+    });
+    const assigneeNames = Array.from(
+      new Set(
+        assigneeRows
+          .map((row) => row.assigneeName?.trim())
+          .filter((name): name is string => Boolean(name)),
+      ),
+    );
 
-    const task = (await taskRes.json()) as { "@odata.etag"?: string; assignments?: Record<string, unknown> };
-    const etag = task["@odata.etag"];
-    if (!etag) return;
+    const assigneeLine = assigneeNames.length > 0
+      ? `This task is assigned to: ${assigneeNames.join(", ")}`
+      : "This task is currently unassigned.";
 
-    // Build assignments object: set new assignees to assigned, null out removed ones
-    const currentAssignees = Object.keys(task.assignments ?? {});
-    const assignments: Record<string, { "@odata.type": string; orderHint: string } | null> = {};
+    const detailsUrl = `https://graph.microsoft.com/v1.0/planner/tasks/${encodeURIComponent(req.plannerTaskId)}/details`;
+    const detailsRes = await fetch(detailsUrl, { headers: { Authorization: `Bearer ${accessToken}` } });
+    if (!detailsRes.ok) return;
 
-    // Remove all current assignments not in new list
-    for (const uid of currentAssignees) {
-      if (!azureUserIds.includes(uid)) assignments[uid] = null;
-    }
-    // Add new assignments
-    for (const uid of azureUserIds) {
-      if (!currentAssignees.includes(uid)) {
-        assignments[uid] = { "@odata.type": "#microsoft.graph.plannerAssignment", orderHint: " !" };
-      }
-    }
+    const details = (await detailsRes.json()) as { "@odata.etag"?: string; description?: string | null };
+    const detailsEtag = details["@odata.etag"];
+    if (!detailsEtag) return;
 
-    if (Object.keys(assignments).length === 0) return;
+    const currentDescription = details.description ?? "";
+    const etaLine = getManagedSingleLine(currentDescription, (line) => line.startsWith(ETA_PREFIX));
+    const notesLines = getManagedSectionLines(currentDescription, NOTES_HEADER).filter((line) => line.trim().length > 0);
+    const commentLines = getManagedSectionLines(currentDescription, COMMENTS_HEADER).filter((line) => line.trim().length > 0);
+    const nextDescription = buildManagedDescription({ etaLine, assigneeLine, notesLines, commentLines });
 
-    await fetch(taskUrl, {
+    await fetch(detailsUrl, {
       method: "PATCH",
       headers: {
         Authorization: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
-        "If-Match": etag,
+        "If-Match": detailsEtag,
       },
-      body: JSON.stringify({ assignments }),
+      body: JSON.stringify({ description: nextDescription }),
     });
   } catch (error) {
     console.error(`Planner assignee sync failed for request ${requestId}:`, error);
@@ -288,41 +359,53 @@ export async function syncRequestAssigneesToPlanner(requestId: string, azureUser
 }
 
 /**
- * Syncs the estimated delivery date of a request to the Planner task due date.
- * Pass null to clear the due date.
+ * Writes the current request ETA into the Planner task notes (description).
+ * This keeps ETA visible in notes without using Planner dueDate.
  */
-export async function syncRequestDueDateToPlanner(
-  requestId: string,
-  dueDate: Date | null,
-): Promise<void> {
+export async function syncRequestEtaToPlannerNotes(requestId: string): Promise<void> {
   if (!plannerEnabled()) return;
 
   try {
     const req = await db.request.findUnique({
       where: { id: requestId },
-      select: { plannerTaskId: true },
+      select: { plannerTaskId: true, estimatedDeliveryDate: true },
     });
     if (!req?.plannerTaskId) return;
 
     const accessToken = await getDelegatedGraphToken();
-    const taskUrl = `https://graph.microsoft.com/v1.0/planner/tasks/${encodeURIComponent(req.plannerTaskId)}`;
-    const taskRes = await fetch(taskUrl, { headers: { Authorization: `Bearer ${accessToken}` } });
-    if (!taskRes.ok) return;
+    const detailsUrl = `https://graph.microsoft.com/v1.0/planner/tasks/${encodeURIComponent(req.plannerTaskId)}/details`;
+    const detailsRes = await fetch(detailsUrl, { headers: { Authorization: `Bearer ${accessToken}` } });
+    if (!detailsRes.ok) return;
 
-    const task = (await taskRes.json()) as { "@odata.etag"?: string };
-    if (!task["@odata.etag"]) return;
+    const details = (await detailsRes.json()) as { "@odata.etag"?: string; description?: string | null };
+    const detailsEtag = details["@odata.etag"];
+    if (!detailsEtag) return;
 
-    await fetch(taskUrl, {
+    const currentDescription = details.description ?? "";
+    const assigneeLine = getManagedSingleLine(
+      currentDescription,
+      (line) => line.startsWith(ASSIGNEE_PREFIX) || line === ASSIGNEE_UNASSIGNED,
+    );
+    const notesLines = getManagedSectionLines(currentDescription, NOTES_HEADER).filter((line) => line.trim().length > 0);
+    const commentLines = getManagedSectionLines(currentDescription, COMMENTS_HEADER).filter((line) => line.trim().length > 0);
+    const nextDescription = buildManagedDescription({
+      etaLine: taskEtaLine(req.estimatedDeliveryDate),
+      assigneeLine,
+      notesLines,
+      commentLines,
+    });
+
+    await fetch(detailsUrl, {
       method: "PATCH",
       headers: {
         Authorization: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
-        "If-Match": task["@odata.etag"],
+        "If-Match": detailsEtag,
       },
-      body: JSON.stringify({ dueDateTime: dueDate ? dueDate.toISOString() : null }),
+      body: JSON.stringify({ description: nextDescription }),
     });
   } catch (error) {
-    console.error(`Planner due date sync failed for request ${requestId}:`, error);
+    console.error(`Planner ETA notes sync failed for request ${requestId}:`, error);
   }
 }
 
@@ -524,7 +607,8 @@ export async function syncDocumentToPlanner(
 }
 
 /**
- * Adds a request comment as a reply in the linked Planner task conversation thread.
+ * Syncs request comments into Planner task description under a managed
+ * "Comments:" section, with one comment per line.
  * This is best-effort and should never block comment creation in the app.
  */
 export async function syncRequestCommentToPlanner(
@@ -542,63 +626,57 @@ export async function syncRequestCommentToPlanner(
     if (!req?.plannerTaskId) return;
 
     const accessToken = await getDelegatedGraphToken();
-    const taskUrl = `https://graph.microsoft.com/v1.0/planner/tasks/${encodeURIComponent(req.plannerTaskId)}?$select=conversationThreadId,planId`;
-    const taskRes = await fetch(taskUrl, {
-      headers: { Authorization: `Bearer ${accessToken}` },
+    const detailsUrl = `https://graph.microsoft.com/v1.0/planner/tasks/${encodeURIComponent(req.plannerTaskId)}/details`;
+    const detailsRes = await fetch(detailsUrl, { headers: { Authorization: `Bearer ${accessToken}` } });
+    if (!detailsRes.ok) return;
+
+    const details = (await detailsRes.json()) as { "@odata.etag"?: string; description?: string | null };
+    const detailsEtag = details["@odata.etag"];
+    if (!detailsEtag) return;
+
+    const currentDescription = details.description ?? "";
+    const etaLine = getManagedSingleLine(currentDescription, (line) => line.startsWith(ETA_PREFIX));
+    const assigneeLine = getManagedSingleLine(
+      currentDescription,
+      (line) => line.startsWith(ASSIGNEE_PREFIX) || line === ASSIGNEE_UNASSIGNED,
+    );
+    const notesLines = getManagedSectionLines(currentDescription, NOTES_HEADER).filter((line) => line.trim().length > 0);
+    const existingComments = getManagedSectionLines(currentDescription, COMMENTS_HEADER)
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    const trimmed = commentText.trim();
+    const nextEntry = `${authorName}: ${trimmed || "(empty comment)"}`;
+    const nextComments = [...existingComments, nextEntry];
+    const nextDescription = buildManagedDescription({
+      etaLine,
+      assigneeLine,
+      notesLines,
+      commentLines: nextComments,
     });
-    if (!taskRes.ok) return;
 
-    const task = (await taskRes.json()) as { conversationThreadId?: string; planId?: string };
-    if (!task.conversationThreadId || !task.planId) return;
-
-    const planUrl = `https://graph.microsoft.com/v1.0/planner/plans/${encodeURIComponent(task.planId)}?$select=container`;
-    const planRes = await fetch(planUrl, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-    if (!planRes.ok) return;
-
-    const plan = (await planRes.json()) as {
-      container?: { containerId?: string; type?: string };
-    };
-    const groupId = plan.container?.containerId;
-    if (!groupId) return;
-
-    const replyUrl = `https://graph.microsoft.com/v1.0/groups/${encodeURIComponent(groupId)}/threads/${encodeURIComponent(task.conversationThreadId)}/reply`;
-    const content = `[QA Audit Tool] ${authorName} commented:\n${commentText}`;
-
-    const replyRes = await fetch(replyUrl, {
-      method: "POST",
+    await fetch(detailsUrl, {
+      method: "PATCH",
       headers: {
         Authorization: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
+        "If-Match": detailsEtag,
       },
-      body: JSON.stringify({
-        post: {
-          body: {
-            contentType: "text",
-            content,
-          },
-        },
-      }),
+      body: JSON.stringify({ description: nextDescription }),
     });
-
-    if (!replyRes.ok) {
-      console.error(
-        `[Planner] Failed to post comment for request ${requestId}: ${replyRes.status} ${await replyRes.text()}`,
-      );
-    }
   } catch (error) {
     console.error(`Planner comment sync failed for request ${requestId}:`, error);
   }
 }
 
 /**
- * Adds a request note update as a reply in the linked Planner task conversation thread.
+ * Syncs request note text into Planner task description under a managed
+ * "Notes:" section, with content on the next line.
  * This is best-effort and should never block note saving in the app.
  */
 export async function syncRequestNoteToPlanner(
   requestId: string,
-  authorName: string,
+  _authorName: string,
   noteText: string,
 ): Promise<void> {
   if (!plannerEnabled()) return;
@@ -611,54 +689,38 @@ export async function syncRequestNoteToPlanner(
     if (!req?.plannerTaskId) return;
 
     const accessToken = await getDelegatedGraphToken();
-    const taskUrl = `https://graph.microsoft.com/v1.0/planner/tasks/${encodeURIComponent(req.plannerTaskId)}?$select=conversationThreadId,planId`;
-    const taskRes = await fetch(taskUrl, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-    if (!taskRes.ok) return;
+    const detailsUrl = `https://graph.microsoft.com/v1.0/planner/tasks/${encodeURIComponent(req.plannerTaskId)}/details`;
+    const detailsRes = await fetch(detailsUrl, { headers: { Authorization: `Bearer ${accessToken}` } });
+    if (!detailsRes.ok) return;
 
-    const task = (await taskRes.json()) as { conversationThreadId?: string; planId?: string };
-    if (!task.conversationThreadId || !task.planId) return;
+    const details = (await detailsRes.json()) as { "@odata.etag"?: string; description?: string | null };
+    const detailsEtag = details["@odata.etag"];
+    if (!detailsEtag) return;
 
-    const planUrl = `https://graph.microsoft.com/v1.0/planner/plans/${encodeURIComponent(task.planId)}?$select=container`;
-    const planRes = await fetch(planUrl, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-    if (!planRes.ok) return;
-
-    const plan = (await planRes.json()) as {
-      container?: { containerId?: string; type?: string };
-    };
-    const groupId = plan.container?.containerId;
-    if (!groupId) return;
-
-    const replyUrl = `https://graph.microsoft.com/v1.0/groups/${encodeURIComponent(groupId)}/threads/${encodeURIComponent(task.conversationThreadId)}/reply`;
     const trimmed = noteText.trim();
-    const content = trimmed
-      ? `[QA Audit Tool] ${authorName} updated the request note:\n${trimmed}`
-      : `[QA Audit Tool] ${authorName} cleared the request note.`;
+    const currentDescription = details.description ?? "";
+    const etaLine = getManagedSingleLine(currentDescription, (line) => line.startsWith(ETA_PREFIX));
+    const assigneeLine = getManagedSingleLine(
+      currentDescription,
+      (line) => line.startsWith(ASSIGNEE_PREFIX) || line === ASSIGNEE_UNASSIGNED,
+    );
+    const commentLines = getManagedSectionLines(currentDescription, COMMENTS_HEADER).filter((line) => line.trim().length > 0);
+    const nextDescription = buildManagedDescription({
+      etaLine,
+      assigneeLine,
+      notesLines: (trimmed || "Not set").split(/\r?\n/),
+      commentLines,
+    });
 
-    const replyRes = await fetch(replyUrl, {
-      method: "POST",
+    await fetch(detailsUrl, {
+      method: "PATCH",
       headers: {
         Authorization: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
+        "If-Match": detailsEtag,
       },
-      body: JSON.stringify({
-        post: {
-          body: {
-            contentType: "text",
-            content,
-          },
-        },
-      }),
+      body: JSON.stringify({ description: nextDescription }),
     });
-
-    if (!replyRes.ok) {
-      console.error(
-        `[Planner] Failed to post note for request ${requestId}: ${replyRes.status} ${await replyRes.text()}`,
-      );
-    }
   } catch (error) {
     console.error(`Planner note sync failed for request ${requestId}:`, error);
   }

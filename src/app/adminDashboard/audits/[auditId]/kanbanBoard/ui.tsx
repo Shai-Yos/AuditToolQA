@@ -274,10 +274,12 @@ export default function KanbanBoardUI({
   const handleReworkRequest = async (requestId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!confirm("Are you sure you want to rework this request?")) return;
-    const firstColumn = audit.statusColumns.slice().sort((a, b) => a.order - b.order)[0];
-    if (firstColumn) {
+    const incomingColumn =
+      audit.statusColumns.find((c) => c.name.toLowerCase() === "incoming") ??
+      audit.statusColumns.slice().sort((a, b) => a.order - b.order)[0];
+    if (incomingColumn) {
       setOptimisticRequests((prev) =>
-        prev.map((r) => r.id === requestId ? { ...r, statusColumnId: firstColumn.id, statusName: firstColumn.name } : r),
+        prev.map((r) => r.id === requestId ? { ...r, statusColumnId: incomingColumn.id, statusName: incomingColumn.name } : r),
       );
     }
     const result = await reworkRequest(requestId, audit.id);
