@@ -32,7 +32,7 @@ export default async function AuditOwnerChatsPage({
   const isOwner = audit.createdById === currentUser.id;
 
   const frCount = audit.frontRoomsCount;
-  const frToBr = frToBrConnectionsFromJson(audit.roomRolesJson ?? null);
+  const frToBr = frToBrConnectionsFromJson(audit.roomRolesJson ?? null, frCount);
   const allChannels = [
     ...Array.from({ length: frCount }, (_, i) => i + 1)
       .filter((frIdx) => (frToBr[frIdx]?.length ?? 0) > 0)
@@ -113,7 +113,7 @@ export default async function AuditOwnerChatsPage({
     commFrIndices = [];
   }
 
-  const frToBrMap = frToBrConnectionsFromJson(audit.roomRolesJson ?? null);
+  const frToBrMap = frToBrConnectionsFromJson(audit.roomRolesJson ?? null, frCount);
 
   const assigneeRecords = await db.auditAssignee.findMany({
     where: { auditId },

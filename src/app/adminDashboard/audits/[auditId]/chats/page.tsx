@@ -27,7 +27,7 @@ export default async function Page({
   if (!audit) return notFound();
 
   const frCount = audit.frontRoomsCount;
-  const frToBr = frToBrConnectionsFromJson(audit.roomRolesJson ?? null);
+  const frToBr = frToBrConnectionsFromJson(audit.roomRolesJson ?? null, frCount);
   const channels = [
     ...Array.from({ length: frCount }, (_, i) => i + 1)
       .filter((frIdx) => (frToBr[frIdx]?.length ?? 0) > 0)
@@ -90,7 +90,7 @@ export default async function Page({
   const transcriptionFrIndices = Array.from({ length: frCount }, (_, i) => i + 1);
 
   // Build FR→BR connection map from roomRolesJson
-  const frToBrMap = frToBrConnectionsFromJson(audit.roomRolesJson);
+  const frToBrMap = frToBrConnectionsFromJson(audit.roomRolesJson, frCount);
 
   // Fetch all @mentionable users: only users assigned to this audit
   const assigneeRecords = await db.auditAssignee.findMany({

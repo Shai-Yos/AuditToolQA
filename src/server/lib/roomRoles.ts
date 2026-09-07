@@ -189,7 +189,10 @@ export function canAccessComm(
  *
  * Example: BR1 connects to FR1 and FR2 → { 1: [1], 2: [1] }
  */
-export function frToBrConnectionsFromJson(roomRolesJson: string | null): Record<number, number[]> {
+export function frToBrConnectionsFromJson(
+  roomRolesJson: string | null,
+  frontRoomsCount?: number,
+): Record<number, number[]> {
   if (!roomRolesJson) return {};
   try {
     const parsed = JSON.parse(roomRolesJson) as RoomRoles;
@@ -199,6 +202,11 @@ export function frToBrConnectionsFromJson(roomRolesJson: string | null): Record<
         if (!map[frIdx]) map[frIdx] = [];
         if (!map[frIdx]!.includes(br.brIndex)) map[frIdx]!.push(br.brIndex);
       }
+    }
+    // Legacy fallback: only when the audit is known to have exactly one FR and
+    // BR connections were left empty. Never infer FR1 defaults for multi-FR audits.
+    if (Object.keys(map).length === 0 && frontRoomsCount === 1 && (parsed.br?.length ?? 0) > 0) {
+      map[1] = (parsed.br ?? []).map((br) => br.brIndex);
     }
     return map;
   } catch {

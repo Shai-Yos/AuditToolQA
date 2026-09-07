@@ -220,6 +220,7 @@ export default function EditAuditForm({ audit, currentUserName }: { audit: Audit
 
   const [frontRoomsCount, setFrontRoomsCount] = useState<number>(audit.frontRoomsCount || 1);
   const [backRoomsCount, setBackRoomsCount] = useState<number>(audit.backRoomsCount || 1);
+  const prevFrontRoomsCountRef = useRef(frontRoomsCount);
 
   const [frRoles, setFrRoles] = useState<FRRoleAssignment[]>(audit.initialFrRoles);
   const [brRoles, setBrRoles] = useState<BRRoleAssignment[]>(audit.initialBrRoles);
@@ -271,9 +272,25 @@ export default function EditAuditForm({ audit, currentUserName }: { audit: Audit
 
   React.useEffect(() => {
     setBrRoles((prev) => {
+      const transitionedFromSingleFr = prevFrontRoomsCountRef.current === 1 && frontRoomsCount > 1;
       const next = Array.from({ length: backRoomsCount }, (_, i) => {
         const existing = prev.find((r) => r.brIndex === i + 1);
-        return existing ?? {
+        if (existing) {
+          if (transitionedFromSingleFr) {
+            return {
+              ...existing,
+              connectedFrIndices: [],
+            };
+          }
+          const normalizedConnectedFrIndices = Array.from(
+            new Set(existing.connectedFrIndices.filter((idx) => idx >= 1 && idx <= frontRoomsCount)),
+          );
+          return {
+            ...existing,
+            connectedFrIndices: frontRoomsCount === 1 ? [1] : normalizedConnectedFrIndices,
+          };
+        }
+        return {
           brIndex: i + 1,
           leadUserIds: [],
           callerUserIds: [],
@@ -283,23 +300,13 @@ export default function EditAuditForm({ audit, currentUserName }: { audit: Audit
           outgoingUserIds: [],
           incomingUserIds: [],
           recordsPrepUserIds: [],
-          connectedFrIndices: frontRoomsCount === 1 && backRoomsCount === 1 ? [1] : [],
+          connectedFrIndices: frontRoomsCount === 1 ? [1] : [],
         };
       });
       return next;
     });
+    prevFrontRoomsCountRef.current = frontRoomsCount;
   }, [backRoomsCount, frontRoomsCount]);
-
-  React.useEffect(() => {
-    if (frontRoomsCount !== 1 || backRoomsCount !== 1) return;
-    setBrRoles((prev) =>
-      prev.map((r) =>
-        r.brIndex === 1 && r.connectedFrIndices.length === 0
-          ? { ...r, connectedFrIndices: [1] }
-          : r,
-      ),
-    );
-  }, [frontRoomsCount, backRoomsCount]);
 
   const stepIndex = useMemo(() => steps.findIndex((s) => s.key === step), [step]);
 
@@ -435,8 +442,8 @@ export default function EditAuditForm({ audit, currentUserName }: { audit: Audit
   );
   const roomRolesJson = useMemo(() => JSON.stringify({
     fr: frRoles.map(({ frIndex, leadUserIds, qmUserIds, smeUserIds, transcriptionUserIds, customRoles }) => ({ frIndex, leadUserIds, qmUserIds, smeUserIds, transcriptionUserIds, customRoles: customRoles || [] })),
-    br: brRoles.map(({ brIndex, leadUserIds, callerUserIds, qmUserIds, qualityReviewerUserIds, smePrepUserIds, outgoingUserIds, incomingUserIds, recordsPrepUserIds, connectedFrIndices, customRoles }) => ({ brIndex, leadUserIds, callerUserIds, qmUserIds: qmUserIds || [], qualityReviewerUserIds: qualityReviewerUserIds || [], smePrepUserIds: smePrepUserIds || [], outgoingUserIds, incomingUserIds, recordsPrepUserIds, connectedFrIndices, customRoles: customRoles || [] })),
-  }), [frRoles, brRoles]);
+    br: brRoles.map(({ brIndex, leadUserIds, callerUserIds, qmUserIds, qualityReviewerUserIds, smePrepUserIds, outgoingUserIds, incomingUserIds, recordsPrepUserIds, connectedFrIndices, customRoles }) => ({ brIndex, leadUserIds, callerUserIds, qmUserIds: qmUserIds || [], qualityReviewerUserIds: qualityReviewerUserIds || [], smePrepUserIds: smePrepUserIds || [], outgoingUserIds, incomingUserIds, recordsPrepUserIds, connectedFrIndices: frontRoomsCount === 1 ? [1] : connectedFrIndices, customRoles: customRoles || [] })),
+  }), [frRoles, brRoles, frontRoomsCount]);
 
   const startAtIso = useMemo(() => {
     const d = normalizeDateInput(startDate);
@@ -791,7 +798,11 @@ export default function EditAuditForm({ audit, currentUserName }: { audit: Audit
                   </div>
                   <div>
                     <h2 className="text-lg font-bold text-slate-900">Room Connections</h2>
-                    <p className="text-xs text-slate-500">For each Back Room, select which Front Room(s) it connects to</p>
+                    <p className="text-xs text-slate-500">
+                      {frontRoomsCount === 1
+                        ? "With one Front Room, all Back Rooms are auto-connected to FR 1."
+                        : "For each Back Room, select which Front Room(s) it connects to"}
+                    </p>
                   </div>
                 </div>
 
@@ -821,18 +832,14 @@ export default function EditAuditForm({ audit, currentUserName }: { audit: Audit
                         <div className="bg-white px-5 py-4 flex flex-wrap gap-2">
                           {frRoles.map((fr) => {
                             const isConnected = br.connectedFrIndices.includes(fr.frIndex);
-                            const isLockedSingleConnection =
-                              frontRoomsCount === 1 &&
-                              backRoomsCount === 1 &&
-                              br.brIndex === 1 &&
-                              fr.frIndex === 1;
+                            const isAutoSingleFr = frontRoomsCount === 1;
                             return (
                               <button
                                 key={fr.frIndex}
                                 type="button"
-                                disabled={isLockedSingleConnection}
+                                disabled={isAutoSingleFr}
                                 onClick={() => {
-                                  if (isLockedSingleConnection) return;
+                                  if (isAutoSingleFr) return;
                                   setBrRoles((prev) => prev.map((r) => {
                                     if (r.brIndex !== br.brIndex) return r;
                                     const newIndices = isConnected
@@ -846,7 +853,7 @@ export default function EditAuditForm({ audit, currentUserName }: { audit: Audit
                                   isConnected
                                     ? "border-blue-500 bg-blue-500 text-white shadow-sm"
                                     : "border-slate-200 bg-slate-50 text-slate-600 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700",
-                                  isLockedSingleConnection ? "cursor-not-allowed opacity-90" : "active:scale-95",
+                                  isAutoSingleFr ? "cursor-not-allowed opacity-90" : "active:scale-95",
                                 ].join(" ")}
                               >
                                 {isConnected ? "✓ " : ""}FR {fr.frIndex}
@@ -854,9 +861,9 @@ export default function EditAuditForm({ audit, currentUserName }: { audit: Audit
                             );
                           })}
                         </div>
-                        {frontRoomsCount === 1 && backRoomsCount === 1 ? (
+                        {frontRoomsCount === 1 ? (
                           <div className="border-t border-violet-200 bg-violet-100 px-5 py-2 text-xs font-medium text-violet-700">
-                            FR 1 and BR 1 are auto-connected and locked for the 1:1 setup.
+                            BR {br.brIndex} is auto-connected to FR 1 when a single Front Room is configured.
                           </div>
                         ) : null}
                       </div>

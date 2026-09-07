@@ -89,7 +89,16 @@ export default function CreateAuditForm({
     setBrRoles((prev) => {
       const next = Array.from({ length: backRoomsCount }, (_, i) => {
         const existing = prev.find((r) => r.brIndex === i + 1);
-        return existing ?? {
+        if (existing) {
+          const normalizedConnectedFrIndices = Array.from(
+            new Set(existing.connectedFrIndices.filter((idx) => idx >= 1 && idx <= frontRoomsCount)),
+          );
+          return {
+            ...existing,
+            connectedFrIndices: frontRoomsCount === 1 ? [1] : normalizedConnectedFrIndices,
+          };
+        }
+        return {
           brIndex: i + 1,
           leadUserIds: [],
           callerUserIds: [],
@@ -99,23 +108,12 @@ export default function CreateAuditForm({
           outgoingUserIds: [],
           incomingUserIds: [],
           recordsPrepUserIds: [],
-          connectedFrIndices: frontRoomsCount === 1 && backRoomsCount === 1 ? [1] : [],
+          connectedFrIndices: frontRoomsCount === 1 ? [1] : [],
         };
       });
       return next;
     });
   }, [backRoomsCount, frontRoomsCount]);
-
-  React.useEffect(() => {
-    if (frontRoomsCount !== 1 || backRoomsCount !== 1) return;
-    setBrRoles((prev) =>
-      prev.map((r) =>
-        r.brIndex === 1 && r.connectedFrIndices.length === 0
-          ? { ...r, connectedFrIndices: [1] }
-          : r,
-      ),
-    );
-  }, [frontRoomsCount, backRoomsCount]);
 
   const stepIndex = useMemo(() => steps.findIndex((s) => s.key === step), [step]);
 
@@ -153,6 +151,26 @@ export default function CreateAuditForm({
       review: maxStepReached >= 5,
     };
   }, [maxStepReached]);
+
+  function handleFrontRoomsCountChange(nextCount: number) {
+    const clamped = clamp(nextCount, 1, 50);
+    setBrRoles((prev) =>
+      prev.map((r) => {
+        if (clamped === 1) {
+          return { ...r, connectedFrIndices: [1] };
+        }
+        if (frontRoomsCount === 1) {
+          return { ...r, connectedFrIndices: [] };
+        }
+        const normalized = Array.from(
+          new Set(r.connectedFrIndices.filter((idx) => idx >= 1 && idx <= clamped)),
+        );
+        if (normalized.length === r.connectedFrIndices.length) return r;
+        return { ...r, connectedFrIndices: normalized };
+      }),
+    );
+    setFrontRoomsCount(clamped);
+  }
 
   function goNext() {
     if (!canGoNext) return;
@@ -264,8 +282,8 @@ export default function CreateAuditForm({
   );
   const roomRolesJson = useMemo(() => JSON.stringify({
     fr: frRoles.map(({ frIndex, leadUserIds, qmUserIds, smeUserIds, transcriptionUserIds, customRoles }) => ({ frIndex, leadUserIds, qmUserIds, smeUserIds, transcriptionUserIds, customRoles: customRoles || [] })),
-    br: brRoles.map(({ brIndex, leadUserIds, callerUserIds, qmUserIds, qualityReviewerUserIds, smePrepUserIds, outgoingUserIds, incomingUserIds, recordsPrepUserIds, connectedFrIndices, customRoles }) => ({ brIndex, leadUserIds, callerUserIds, qmUserIds, qualityReviewerUserIds, smePrepUserIds, outgoingUserIds, incomingUserIds, recordsPrepUserIds, connectedFrIndices, customRoles: customRoles || [] })),
-  }), [frRoles, brRoles]);
+    br: brRoles.map(({ brIndex, leadUserIds, callerUserIds, qmUserIds, qualityReviewerUserIds, smePrepUserIds, outgoingUserIds, incomingUserIds, recordsPrepUserIds, connectedFrIndices, customRoles }) => ({ brIndex, leadUserIds, callerUserIds, qmUserIds, qualityReviewerUserIds, smePrepUserIds, outgoingUserIds, incomingUserIds, recordsPrepUserIds, connectedFrIndices: frontRoomsCount === 1 ? [1] : connectedFrIndices, customRoles: customRoles || [] })),
+  }), [frRoles, brRoles, frontRoomsCount]);
 
   const startAtIso = useMemo(() => {
     const d = normalizeDateInput(startDate);
@@ -527,7 +545,7 @@ export default function CreateAuditForm({
                     <div className="flex items-center justify-between bg-white px-6 py-5">
                       <button
                         type="button"
-                        onClick={() => setFrontRoomsCount((n) => Math.max(1, n - 1))}
+                        onClick={() => handleFrontRoomsCountChange(frontRoomsCount - 1)}
                         className="flex h-11 w-11 items-center justify-center rounded-xl border-2 border-blue-200 bg-blue-50 text-2xl font-bold text-blue-600 transition hover:border-blue-400 hover:bg-blue-100 active:scale-95"
                       >−</button>
                       <div className="text-center">
@@ -536,7 +554,7 @@ export default function CreateAuditForm({
                       </div>
                       <button
                         type="button"
-                        onClick={() => setFrontRoomsCount((n) => Math.min(50, n + 1))}
+                        onClick={() => handleFrontRoomsCountChange(frontRoomsCount + 1)}
                         className="flex h-11 w-11 items-center justify-center rounded-xl border-2 border-blue-200 bg-blue-50 text-2xl font-bold text-blue-600 transition hover:border-blue-400 hover:bg-blue-100 active:scale-95"
                       >+</button>
                     </div>
@@ -589,7 +607,11 @@ export default function CreateAuditForm({
                   </div>
                   <div>
                     <h2 className="text-lg font-bold text-slate-900">Room Connections</h2>
-                    <p className="text-xs text-slate-500">For each Back Room, select which Front Room(s) it connects to</p>
+                    <p className="text-xs text-slate-500">
+                      {frontRoomsCount === 1
+                        ? "With one Front Room, all Back Rooms are auto-connected to FR 1."
+                        : "For each Back Room, select which Front Room(s) it connects to"}
+                    </p>
                   </div>
                 </div>
 
@@ -619,18 +641,14 @@ export default function CreateAuditForm({
                         <div className="bg-white px-5 py-4 flex flex-wrap gap-2">
                           {frRoles.map((fr) => {
                             const isConnected = br.connectedFrIndices.includes(fr.frIndex);
-                            const isLockedSingleConnection =
-                              frontRoomsCount === 1 &&
-                              backRoomsCount === 1 &&
-                              br.brIndex === 1 &&
-                              fr.frIndex === 1;
+                            const isAutoSingleFr = frontRoomsCount === 1;
                             return (
                               <button
                                 key={fr.frIndex}
                                 type="button"
-                                disabled={isLockedSingleConnection}
+                                disabled={isAutoSingleFr}
                                 onClick={() => {
-                                  if (isLockedSingleConnection) return;
+                                  if (isAutoSingleFr) return;
                                   setBrRoles((prev) => prev.map((r) => {
                                     if (r.brIndex !== br.brIndex) return r;
                                     const newIndices = isConnected
@@ -644,7 +662,7 @@ export default function CreateAuditForm({
                                   isConnected
                                     ? "border-blue-500 bg-blue-500 text-white shadow-sm"
                                     : "border-slate-200 bg-slate-50 text-slate-600 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700",
-                                  isLockedSingleConnection ? "cursor-not-allowed opacity-90" : "active:scale-95",
+                                  isAutoSingleFr ? "cursor-not-allowed opacity-90" : "active:scale-95",
                                 ].join(" ")}
                               >
                                 {isConnected ? "✓ " : ""}FR {fr.frIndex}
@@ -652,9 +670,9 @@ export default function CreateAuditForm({
                             );
                           })}
                         </div>
-                        {frontRoomsCount === 1 && backRoomsCount === 1 ? (
+                        {frontRoomsCount === 1 ? (
                           <div className="border-t border-violet-200 bg-violet-100 px-5 py-2 text-xs font-medium text-violet-700">
-                            FR 1 and BR 1 are auto-connected and locked for the 1:1 setup.
+                            BR {br.brIndex} is auto-connected to FR 1 when a single Front Room is configured.
                           </div>
                         ) : null}
                       </div>
