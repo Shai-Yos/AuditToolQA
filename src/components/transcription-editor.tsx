@@ -368,7 +368,15 @@ const AuthorStamp = TiptapNode.create({
 });
 
 // ── Toolbar ─────────────────────────────────────────────────────────
-function Toolbar({ editor }: { editor: ReturnType<typeof useEditor> | null }) {
+function Toolbar({
+  editor,
+  onInsertAuthorStamp,
+  canInsertAuthorStamp,
+}: {
+  editor: ReturnType<typeof useEditor> | null;
+  onInsertAuthorStamp?: () => void;
+  canInsertAuthorStamp?: boolean;
+}) {
   if (!editor) return null;
 
   return (
@@ -471,6 +479,16 @@ function Toolbar({ editor }: { editor: ReturnType<typeof useEditor> | null }) {
       <Sep />
 
       <Btn
+        title="Insert author/time label"
+        onClick={() => onInsertAuthorStamp?.()}
+        disabled={!canInsertAuthorStamp}
+      >
+        ⏱
+      </Btn>
+
+      <Sep />
+
+      <Btn
         title="Undo (Ctrl+Z)"
         onClick={() => editor.chain().focus().undo().run()}
         disabled={!editor.can().undo()}
@@ -558,6 +576,34 @@ export function TranscriptionEditor({
     [],
   );
 
+  const insertAuthorStamp = useCallback((ed: any) => {
+    const author = currentAuthorRef.current;
+    if (!author) return;
+
+    lastStampedAuthorRef.current = author;
+    if (stampKey) sessionStorage.setItem(stampKey, author);
+
+    const now = new Date();
+    const monthNames = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+    const datePart = `${String(now.getUTCDate()).padStart(2, "0")} ${monthNames[now.getUTCMonth()]!} ${now.getUTCFullYear()}`;
+    const timePart = new Intl.DateTimeFormat("en-GB", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+      timeZone: "UTC",
+    }).format(now);
+    const time = `${datePart} ${timePart} UTC`;
+
+    ed.chain()
+      .focus("end")
+      .insertContent([
+        { type: "authorStamp", attrs: { id: crypto.randomUUID(), author, time } },
+        { type: "paragraph" },
+      ])
+      .focus("end")
+      .run();
+  }, [stampKey]);
+
   const editor = useEditor({
     immediatelyRender: false,
     extensions: [
@@ -607,28 +653,20 @@ export function TranscriptionEditor({
       // meant a genuinely blank/unstamped document could silently skip
       // stamping because "this author already stamped last time".
       let lastDocAuthor: string | null = null;
+      let lastDocTime: string | null = null;
       ed.state.doc.descendants((node: any) => {
-        if (node.type.name === "authorStamp") lastDocAuthor = node.attrs.author;
+        if (node.type.name === "authorStamp") {
+          lastDocAuthor = node.attrs.author;
+          lastDocTime = node.attrs.time ?? null;
+        }
         return true;
       });
-      if (lastDocAuthor === author) return;
-      lastStampedAuthorRef.current = author;
-      if (stampKey) sessionStorage.setItem(stampKey, author);
-      const time = `${new Date().toLocaleTimeString("en-GB", {
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false,
-        timeZone: "UTC",
-      })} UTC`;
+      const hasDateInStamp = typeof lastDocTime === "string"
+        ? /\b\d{2}\s+[a-z]{3}\s+\d{4}\b/i.test(lastDocTime)
+        : false;
+      if (lastDocAuthor === author && hasDateInStamp) return;
       requestAnimationFrame(() => {
-        ed.chain()
-          .focus("end")
-          .insertContent([
-            { type: "authorStamp", attrs: { id: crypto.randomUUID(), author, time } },
-            { type: "paragraph" },
-          ])
-          .focus("end")
-          .run();
+        insertAuthorStamp(ed);
       });
     },
     editorProps: {
@@ -696,7 +734,15 @@ export function TranscriptionEditor({
 
   return (
     <div ref={outerRef} className="flex flex-col flex-1 min-h-0 relative">
-      {!readOnly && <Toolbar editor={editor} />}
+      {!readOnly && (
+        <Toolbar
+          editor={editor}
+          onInsertAuthorStamp={() => {
+            if (editor) insertAuthorStamp(editor);
+          }}
+          canInsertAuthorStamp={Boolean(currentAuthorRef.current)}
+        />
+      )}
       {!readOnly && selectionText && btnPos && onRequestShortcutRef.current && (
         <button
           type="button"

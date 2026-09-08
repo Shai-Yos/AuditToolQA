@@ -89,6 +89,7 @@ export default async function Page({
   const canTranscribe = isAdmin || (assignee ? canAccessTranscription(effectiveRole, frNum) : false);
   const canComm = isAdmin || !!assignee;
   const readOnly = isTranscription ? !canTranscribe : !canComm;
+  const canExportTranscription = isTranscription && isAdmin;
 
   return (
     <PopoutUI
@@ -100,7 +101,10 @@ export default async function Page({
       initialMessages={initialMessages}
       composerPlaceholder={isTranscription ? "Enter transcription\u2026" : "Type a message\u2026"}
       currentUserName={currentUser.name ?? currentUser.email ?? "User"}
-      rightPanel={isTranscription}      readOnly={readOnly}      frIndex={frNum}
+      rightPanel={isTranscription}
+      allowTranscriptionExport={canExportTranscription}
+      readOnly={readOnly}
+      frIndex={frNum}
     />
   );
 }

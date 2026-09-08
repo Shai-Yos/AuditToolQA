@@ -111,6 +111,7 @@ export default async function AuditOwnerChatPopoutPage({
       composerPlaceholder={isTranscription ? "Enter transcription…" : "Type a message…"}
       currentUserName={currentUser.name ?? currentUser.email ?? "Audit Owner"}
       rightPanel={isTranscription}
+      allowTranscriptionExport={isTranscription && isOwner}
       readOnly={readOnly}
       frIndex={frNum}
     />

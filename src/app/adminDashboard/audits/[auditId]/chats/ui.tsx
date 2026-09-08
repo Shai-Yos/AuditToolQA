@@ -642,11 +642,30 @@ export function ChatPanel({
       const payload = (await res.json().catch(() => ({}))) as {
         status?: string;
         fileName?: string;
+        downloadPath?: string;
         error?: string;
       };
       if (!res.ok) {
         setExportStatusText(payload.error ?? "Export failed");
       } else if (payload.status === "exported") {
+        if (payload.downloadPath && payload.fileName) {
+          try {
+            const downloadRes = await fetch(payload.downloadPath, { cache: "no-store" });
+            if (downloadRes.ok) {
+              const blob = await downloadRes.blob();
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = url;
+              a.download = payload.fileName;
+              document.body.appendChild(a);
+              a.click();
+              a.remove();
+              URL.revokeObjectURL(url);
+            }
+          } catch {
+            // Keep success state for OneDrive export even if local download fails.
+          }
+        }
         setExportStatusText(`Exported (${payload.fileName ?? "snapshot"})`);
       } else if (payload.status === "skipped") {
         setExportStatusText("No content to export");

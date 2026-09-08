@@ -86,6 +86,7 @@ export default async function Page({
       composerPlaceholder={isTranscription ? "Enter transcription..." : "Type a message..."}
       currentUserName={currentUser.name ?? currentUser.email ?? "Admin"}
       rightPanel={isTranscription}
+      allowTranscriptionExport={isTranscription}
       frIndex={frNum}
     />
   );

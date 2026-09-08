@@ -28,6 +28,7 @@ export default function PopoutUI({
   composerPlaceholder,
   currentUserName,
   rightPanel,
+  allowTranscriptionExport,
   frIndex,
 }: {
   auditId: string;
@@ -39,6 +40,7 @@ export default function PopoutUI({
   composerPlaceholder: string;
   currentUserName: string;
   rightPanel?: boolean;
+  allowTranscriptionExport?: boolean;
   frIndex?: number;
 }) {
   const [showModal, setShowModal] = useState(false);
@@ -64,6 +66,7 @@ export default function PopoutUI({
         composerPlaceholder={composerPlaceholder}
         currentUserName={currentUserName}
         rightPanel={rightPanel}
+        allowTranscriptionExport={allowTranscriptionExport}
         frIndex={frIndex}
         popout
         onCreateRequest={(text, frIdx) => {

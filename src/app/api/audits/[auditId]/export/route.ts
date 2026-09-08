@@ -3,12 +3,9 @@ import { db } from "@/server/db";
 import { requireUser } from "@/server/helpers/currentUser";
 import * as XLSX from "xlsx";
 import JSZip from "jszip";
-import { join } from "path";
 import {
-  isOneDriveUrl,
-  extractDrivePath,
   getOneDriveFileBuffer,
-  readLocalFile,
+  listOneDriveFolderEntries,
 } from "@/server/lib/oneDriveClient";
 
 /** Format a Date to a readable UTC string: DD/MM/YYYY HH:MM UTC */
@@ -47,31 +44,6 @@ function htmlToText(html: string): string {
   // Collapse multiple blank lines
   text = text.replace(/\n{3,}/g, "\n\n").trim();
   return text;
-}
-
-const safeSegment = (s: string, fallback: string) =>
-  s
-    .trim()
-    .replace(/[^a-zA-Z0-9._\- ]+/g, "_")
-    .replace(/^_|_$/g, "")
-    .substring(0, 100) || fallback;
-
-/** Same slugify as the upload routes so folder names match OneDrive exactly */
-const slugify = (s: string, fallback: string) =>
-  s.trim().replace(/[\/\\:*?"<>|]/g, "_").substring(0, 100) || fallback;
-
-async function fetchFileBuffer(url: string): Promise<Buffer | null> {
-  if (isOneDriveUrl(url)) {
-    const drivePath = extractDrivePath(url);
-    const result = await getOneDriveFileBuffer(drivePath);
-    return result?.buffer ?? null;
-  }
-  if (url.startsWith("/api/uploads/")) {
-    const relative = url.replace(/^\/api\/uploads\//, "");
-    const localPath = join(process.cwd(), "public", "uploads", relative);
-    return readLocalFile(localPath);
-  }
-  return null;
 }
 
 export async function GET(
@@ -315,56 +287,36 @@ export async function GET(
   }
 
   // ── ZIP response — mirrors OneDrive folder structure ──
-  // Everything goes under the exact audit title, matching AuditTool/Audits/{audit.title}/
+  // Use the same sanitized audit folder naming as createAudit to avoid accidental nesting.
   const zip = new JSZip();
-  const root = zip.folder(audit.title)!;
+  const rootFolderName = (audit.trackId
+    ? `${audit.trackId} ${audit.title}`
+    : audit.title)
+    .replace(/[^a-zA-Z0-9._\- ]/g, "_")
+    .trim() || "audit";
+  const root = zip.folder(rootFolderName)!;
 
-  // requests/ — one subfolder per request (slug matches the upload convention)
-  const requestsFolder = root.folder("requests")!;
-  const allDocs = audit.requests.flatMap((r) =>
-    r.documents.map((d) => ({ request: r, doc: d })),
-  );
+  // Mirror the exact OneDrive audit folder tree (folders + files).
+  const oneDriveAuditRoot = `/AuditTool/Audits/${rootFolderName}`;
+  const oneDriveEntries = await listOneDriveFolderEntries(oneDriveAuditRoot);
+
+  for (const entry of oneDriveEntries.filter((e) => e.kind === "folder")) {
+    const rel = entry.drivePath.slice(oneDriveAuditRoot.length).replace(/^\/+/, "");
+    if (!rel) continue;
+    root.folder(rel);
+  }
+
   await Promise.all(
-    allDocs.map(async ({ request: r, doc: d }) => {
-      const buf = await fetchFileBuffer(d.url);
-      if (!buf) return;
-      const reqSlug = slugify(r.trackNumber ?? r.title ?? r.id, r.id);
-      requestsFolder.folder(reqSlug)!.file(d.filename, new Uint8Array(buf));
-    }),
+    oneDriveEntries
+      .filter((e) => e.kind === "file")
+      .map(async (entry) => {
+        const rel = entry.drivePath.slice(oneDriveAuditRoot.length).replace(/^\/+/, "");
+        if (!rel) return;
+        const fetched = await getOneDriveFileBuffer(entry.drivePath);
+        if (!fetched?.buffer) return;
+        root.file(rel, new Uint8Array(fetched.buffer));
+      }),
   );
-
-  // General files (slot = "agenda")
-  const agendaFiles = await db.auditFile.findMany({
-    where: { auditId, slot: "agenda", NOT: { fileUrl: { startsWith: "folder:" } } },
-    select: { fileName: true, fileUrl: true },
-  });
-  if (agendaFiles.length > 0) {
-    const agendaFolder = root.folder("General")!;
-    await Promise.all(
-      agendaFiles.map(async (f) => {
-        const buf = await fetchFileBuffer(f.fileUrl);
-        if (!buf) return;
-        // f.fileName stores the slot-relative path e.g. "SubFolder/report.pdf"
-        agendaFolder.file(f.fileName, new Uint8Array(buf));
-      }),
-    );
-  }
-
-  // Ready Box files (slot = "readyBox")
-  const readyBoxFiles = await db.auditFile.findMany({
-    where: { auditId, slot: "readyBox", NOT: { fileUrl: { startsWith: "folder:" } } },
-    select: { fileName: true, fileUrl: true },
-  });
-  if (readyBoxFiles.length > 0) {
-    const readyBoxFolder = root.folder("Ready Box")!;
-    await Promise.all(
-      readyBoxFiles.map(async (f) => {
-        const buf = await fetchFileBuffer(f.fileUrl);
-        if (!buf) return;
-        readyBoxFolder.file(f.fileName, new Uint8Array(buf));
-      }),
-    );
-  }
 
   // Always include the XLSX
   root.file(`${safeName}_export.xlsx`, new Uint8Array(buffer));

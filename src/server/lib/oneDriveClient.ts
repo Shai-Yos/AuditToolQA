@@ -273,6 +273,89 @@ export async function getOneDriveFileBuffer(drivePath: string): Promise<{ buffer
   }
 }
 
+export interface OneDriveFolderFile {
+  drivePath: string;
+  name: string;
+}
+
+export interface OneDriveFolderEntry {
+  drivePath: string;
+  name: string;
+  kind: "file" | "folder";
+}
+
+/**
+ * Recursively list all entries (folders and files) under a OneDrive folder drive path.
+ */
+export async function listOneDriveFolderEntries(folderDrivePath: string): Promise<OneDriveFolderEntry[]> {
+  if (!isOneDriveConfigured()) return [];
+
+  try {
+    const token = await getOneDriveToken();
+    const normalizedRoot = `/${folderDrivePath.replace(/^\/+/, "").replace(/\/+$/, "")}`;
+    const queue: string[] = [normalizedRoot];
+    const entries: OneDriveFolderEntry[] = [];
+
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      let nextUrl: string | null = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(ONEDRIVE_USER)}/drive/root:${encodeURIComponent(current).replace(/%2F/g, "/")}:/children?$top=200`;
+
+      while (nextUrl) {
+        const res = await fetch(nextUrl, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        if (!res.ok) {
+          const text = await res.text().catch(() => "");
+          console.error(`[OneDrive] Failed to list folder ${current}: ${res.status} ${text}`);
+          break;
+        }
+
+        const data = (await res.json()) as {
+          value?: Array<{
+            name?: string;
+            folder?: Record<string, unknown>;
+            parentReference?: { path?: string };
+          }>;
+          "@odata.nextLink"?: string;
+        };
+
+        for (const item of data.value ?? []) {
+          const name = item.name ?? "";
+          if (!name) continue;
+
+          const parentPath = (item.parentReference?.path ?? "").replace(/^\/drive\/root:/, "");
+          const itemPath = `${parentPath}/${name}`.replace(/\/+/g, "/");
+
+          if (item.folder) {
+            entries.push({ drivePath: itemPath, name, kind: "folder" });
+            queue.push(itemPath);
+          } else {
+            entries.push({ drivePath: itemPath, name, kind: "file" });
+          }
+        }
+
+        nextUrl = data["@odata.nextLink"] ?? null;
+      }
+    }
+
+    return entries;
+  } catch (error) {
+    console.error("[OneDrive] Failed to list folder entries:", error);
+    return [];
+  }
+}
+
+/**
+ * Recursively list all files under a OneDrive folder drive path.
+ */
+export async function listOneDriveFolderFiles(folderDrivePath: string): Promise<OneDriveFolderFile[]> {
+  const entries = await listOneDriveFolderEntries(folderDrivePath);
+  return entries
+    .filter((e) => e.kind === "file")
+    .map((e) => ({ drivePath: e.drivePath, name: e.name }));
+}
+
 // ─── Delete ────────────────────────────────────────────────────────────────────
 
 /**

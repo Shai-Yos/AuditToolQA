@@ -99,25 +99,31 @@ export default function ExportModal({ auditTitle, onConfirm, onClose }: ExportMo
                 <li className="flex items-center gap-1.5">
                   <span className="text-slate-400">•</span>
                   <span>
-                    <strong className="text-slate-600 dark:text-slate-300">requests/</strong> - requests files
+                    <strong className="text-slate-600 dark:text-slate-300">Requests/</strong> - requests files
                   </span>
                 </li>
                 <li className="flex items-center gap-1.5">
                   <span className="text-slate-400">•</span>
                   <span>
-                    <strong className="text-slate-600 dark:text-slate-300">chats/</strong> - chats files
+                    <strong className="text-slate-600 dark:text-slate-300">Chat/</strong> - chats files
                   </span>
                 </li>
                 <li className="flex items-center gap-1.5">
                   <span className="text-slate-400">•</span>
                   <span>
-                    <strong className="text-slate-600 dark:text-slate-300">Audit Agenda/</strong> - agenda files
+                    <strong className="text-slate-600 dark:text-slate-300">General/</strong> - agenda and follow-up files
                   </span>
                 </li>
                 <li className="flex items-center gap-1.5">
                   <span className="text-slate-400">•</span>
                   <span>
                     <strong className="text-slate-600 dark:text-slate-300">Ready Box/</strong> - ready box files
+                  </span>
+                </li>
+                <li className="flex items-center gap-1.5">
+                  <span className="text-slate-400">•</span>
+                  <span>
+                    <strong className="text-slate-600 dark:text-slate-300">Auditors/</strong> - auditors files
                   </span>
                 </li>
               </ul>

@@ -28,6 +28,7 @@ export default function PopoutUI({
   composerPlaceholder,
   currentUserName,
   rightPanel,
+  allowTranscriptionExport,
   readOnly,
   frIndex,
 }: {
@@ -40,6 +41,7 @@ export default function PopoutUI({
   composerPlaceholder: string;
   currentUserName: string;
   rightPanel?: boolean;
+  allowTranscriptionExport?: boolean;
   readOnly?: boolean;
   frIndex?: number;
 }) {
@@ -66,6 +68,7 @@ export default function PopoutUI({
         composerPlaceholder={composerPlaceholder}
         currentUserName={currentUserName}
         rightPanel={rightPanel}
+        allowTranscriptionExport={allowTranscriptionExport}
         readOnly={readOnly}
         frIndex={frIndex}
         popout
