@@ -14,6 +14,7 @@ export type CreateRequestInput = {
   auditId: string;
   title: string;
   isFormal: string;
+  isSensitive?: boolean;
   returnTab: string;
   frIndex: string;
   labels: string[];
@@ -22,7 +23,7 @@ export type CreateRequestInput = {
 };
 
 export async function createRequest(_: State, input: FormData | CreateRequestInput): Promise<State> {
-  let auditId: string, title: string, isFormal: boolean, returnTab: string, frIndex: string, labelValues: string[];
+  let auditId: string, title: string, isFormal: boolean, isSensitive: boolean, returnTab: string, frIndex: string, labelValues: string[];
 
   let dashboardBase: string;
 
@@ -32,6 +33,7 @@ export async function createRequest(_: State, input: FormData | CreateRequestInp
     auditId = String(input.get("auditId") || "");
     title = String(input.get("title") || "").trim();
     isFormal = String(input.get("isFormal") || "false") === "true";
+    isSensitive = String(input.get("isSensitive") || "false") === "true";
     returnTab = String(input.get("returnTab") || "requests");
     frIndex = String(input.get("frIndex") || "").trim();
     labelValues = input.getAll("labels").map(String).filter(Boolean);
@@ -42,6 +44,7 @@ export async function createRequest(_: State, input: FormData | CreateRequestInp
     auditId = input.auditId || "";
     title = (input.title || "").trim();
     isFormal = (input.isFormal || "false") === "true";
+    isSensitive = input.isSensitive === true;
     returnTab = input.returnTab || "requests";
     frIndex = (input.frIndex || "").trim();
     labelValues = input.labels || [];
@@ -102,6 +105,7 @@ export async function createRequest(_: State, input: FormData | CreateRequestInp
             statusName: firstCol.name,
             auditTitle: audit?.title ?? "",
             labels: JSON.stringify(labels),
+            isSensitive,
             createdById: currentUser.id,
             createdByName: currentUser.name ?? currentUser.email ?? "",
             trackNumber,
@@ -159,6 +163,7 @@ export async function createRequest(_: State, input: FormData | CreateRequestInp
       requestId,
       auditTitle: audit?.title ?? "",
       isFormal: String(isFormal),
+      isSensitive: String(isSensitive),
       trackNumber,
       status: firstCol.name,
       labels: labels.join(", "),

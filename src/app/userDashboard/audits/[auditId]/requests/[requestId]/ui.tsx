@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState, useTransition, useCallback, useRef } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { updateRequestAssignees, updateRequestBasic, type UpdateRequestBasicInput, type UpdateRequestAssigneesInput } from "./actions";
+import { toggleRequestSensitive, updateRequestAssignees, updateRequestBasic, type UpdateRequestBasicInput, type UpdateRequestAssigneesInput } from "./actions";
 import { useAuditNav } from "@/components/audit-nav-context";
 import { addRequestComment, deleteRequestComment, saveRequestNote } from "~/server/lib/requestNotesComments";
 import MentionTextarea, { renderMentionText } from "@/components/MentionTextarea";
@@ -94,6 +94,20 @@ function PersonAvatar({ name, src, size = "sm" }: { name: string; src?: string |
   );
 }
 
+function LockIcon({ locked, className = "h-4 w-4" }: { locked: boolean; className?: string }) {
+  return locked ? (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M16 11V8a4 4 0 10-8 0v3" />
+      <rect x="5" y="11" width="14" height="10" rx="2" ry="2" />
+    </svg>
+  ) : (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M19 11H9a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2v-6a2 2 0 00-2-2z" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M11 11V8a4 4 0 017.5-2" />
+    </svg>
+  );
+}
+
 export default function RequestUI({
   auditId,
   auditTitle,
@@ -119,6 +133,7 @@ export default function RequestUI({
     trackNumber: string | null;
     labels: string[];
     isFormal: boolean;
+    isSensitive: boolean;
     statusColumnId: string;
     documents: { id: string; filename: string; url: string }[];
     assigneeIds: string[];
@@ -347,6 +362,9 @@ export default function RequestUI({
   );
   const [documents, setDocuments] = useState(request.documents);
   const [selectedStatus, setSelectedStatus] = useState(request.statusColumnId);
+  const [isSensitive, setIsSensitive] = useState(request.isSensitive);
+  const [sensitivePending, startSensitiveTransition] = useTransition();
+  const [sensitiveError, setSensitiveError] = useState<string | null>(null);
   const [commentText, setCommentText] = useState("");
   const [commentSending, setCommentSending] = useState(false);
   const [liveComments, setLiveComments] = useState(comments);
@@ -379,6 +397,7 @@ export default function RequestUI({
     const es = new EventSource(`/api/stream/request/${request.id}`);
     es.onmessage = (e) => {
       if (e.data === "comments" || e.data === "notes") void fetchCommentsNotes();
+      if (e.data === "sensitive") router.refresh();
       if (e.data === "lock" && lockStateRef.current === "blocked" && !suppressLockReacquireRef.current) {
         void refreshLockIfBlocked();
       }
@@ -410,7 +429,26 @@ export default function RequestUI({
     });
   }, [auditPeople]);
 
+  useEffect(() => {
+    setIsSensitive(request.isSensitive);
+  }, [request.isSensitive]);
+
   const isReadOnly = lockState !== "owned";
+
+  const handleSensitiveToggle = () => {
+    if (isReadOnly || sensitivePending) return;
+    const previous = isSensitive;
+    const next = !previous;
+    setSensitiveError(null);
+    setIsSensitive(next);
+    startSensitiveTransition(async () => {
+      const result = await toggleRequestSensitive(request.id, auditId, next);
+      if (!result.ok) {
+        setIsSensitive(previous);
+        setSensitiveError(result.error ?? "Failed to update sensitivity.");
+      }
+    });
+  };
 
   return (
     <main className="min-h-screen bg-slate-50 print:bg-white print:min-h-0">
@@ -476,6 +514,25 @@ export default function RequestUI({
         <div className="print:hidden flex flex-col items-center">
           <div className="text-center">
             <h1 className="text-2xl font-bold text-slate-900">{request.trackNumber ?? request.title}</h1>
+            <div className="mt-2 flex flex-col items-center gap-2">
+              <button
+                type="button"
+                onClick={handleSensitiveToggle}
+                disabled={isReadOnly || sensitivePending}
+                aria-pressed={isSensitive}
+                title={isSensitive ? "Remove sensitive mark" : "Mark request as sensitive"}
+                className={[
+                  "inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-bold ring-1 transition disabled:cursor-not-allowed disabled:opacity-60",
+                  isSensitive
+                    ? "bg-red-600 text-white ring-red-600 hover:bg-red-700"
+                    : "bg-white text-slate-700 ring-slate-300 hover:bg-slate-50",
+                ].join(" ")}
+              >
+                <LockIcon locked={isSensitive} className="h-4 w-4" />
+                <span>{isSensitive ? "Sensitive" : "Mark Sensitive"}</span>
+              </button>
+              {sensitiveError ? <p className="text-xs font-medium text-red-600">{sensitiveError}</p> : null}
+            </div>
             <p className="mt-1 text-sm text-slate-600">Audit: {auditTitle}</p>
           </div>
           <div id="req-header-actions" className="mt-3 flex items-center gap-3">

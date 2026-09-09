@@ -64,6 +64,7 @@ export default async function Page({
           labels: (() => { try { const p = JSON.parse(r.labels); return Array.isArray(p) ? p as string[] : []; } catch { return []; } })(),
           statusColumnId: r.requestStatusId,
           statusName: r.requestStatus.name,
+          isSensitive: r.isSensitive,
           isFormal: r.isFormal,
           code: null,
           createdAt: r.createdAt.toISOString(),

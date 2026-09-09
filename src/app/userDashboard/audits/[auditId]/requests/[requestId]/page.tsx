@@ -89,6 +89,7 @@ export default async function Page({
         trackNumber: request.trackNumber ?? null,
         labels: requestLabels,
         isFormal: request.isFormal,
+        isSensitive: request.isSensitive,
         statusColumnId: request.requestStatusId,
         documents: request.documents.map((d) => ({ id: d.id, filename: d.filename, url: d.url })),
         assigneeIds: request.assignees.map((a) => a.userId),

@@ -6,6 +6,7 @@ import { requireUser } from "~/server/helpers/currentUser";
 import { logActivity } from "~/server/helpers/logActivity";
 import { computeClosedAt } from "~/server/lib/requestStatus";
 import { syncRequestBucketToPlanner } from "~/server/lib/planner";
+import { emitAuditEvent } from "~/server/lib/event-bus";
 
 export async function updateRequestStatus(
   requestId: string,
@@ -70,6 +71,49 @@ export async function updateRequestStatus(
     return { ok: true };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Failed to update request status";
+    return { ok: false, error: errorMessage };
+  }
+}
+
+export async function toggleRequestSensitive(
+  requestId: string,
+  auditId: string,
+  isSensitive: boolean,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const currentUser = await requireUser();
+
+    const existing = await db.request.findUnique({
+      where: { id: requestId },
+      select: { title: true, trackNumber: true, auditTitle: true },
+    });
+    if (!existing) return { ok: false, error: "Request not found" };
+
+    await db.request.update({
+      where: { id: requestId },
+      data: { isSensitive },
+    });
+
+    await logActivity({
+      type: "REQUEST_UPDATED",
+      actorName: currentUser.name ?? currentUser.email ?? "User",
+      targetId: requestId,
+      targetTitle: existing.trackNumber ?? existing.title ?? requestId,
+      meta: {
+        auditId,
+        auditTitle: existing.auditTitle ?? "",
+        field: "isSensitive",
+        value: isSensitive ? "true" : "false",
+      },
+    });
+
+    emitAuditEvent(auditId, "kanban");
+    emitAuditEvent(auditId, "requests");
+    revalidatePath(`/userDashboard/audits/${auditId}`);
+    revalidatePath(`/auditOwnerDashboard/audits/${auditId}`);
+    return { ok: true };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Failed to update sensitivity";
     return { ok: false, error: errorMessage };
   }
 }

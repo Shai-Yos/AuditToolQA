@@ -201,6 +201,49 @@ export async function reworkRequest(
   }
 }
 
+export async function toggleRequestSensitive(
+  requestId: string,
+  auditId: string,
+  isSensitive: boolean,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const admin = await requireAdmin();
+
+    const existing = await db.request.findUnique({
+      where: { id: requestId },
+      select: { title: true, trackNumber: true, auditTitle: true },
+    });
+
+    if (!existing) return { ok: false, error: "Request not found" };
+
+    await db.request.update({
+      where: { id: requestId },
+      data: { isSensitive },
+    });
+
+    await logActivity({
+      type: "REQUEST_UPDATED",
+      actorName: admin.name ?? admin.email ?? "Admin",
+      targetId: requestId,
+      targetTitle: existing.trackNumber ?? existing.title ?? requestId,
+      meta: {
+        auditId,
+        auditTitle: existing.auditTitle ?? "",
+        field: "isSensitive",
+        value: isSensitive ? "true" : "false",
+      },
+    });
+
+    emitAuditEvent(auditId, "kanban");
+    emitAuditEvent(auditId, "requests");
+    revalidatePath(`/adminDashboard/audits/${auditId}`);
+    return { ok: true };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Failed to update sensitivity";
+    return { ok: false, error: errorMessage };
+  }
+}
+
 export async function removeUserFromAudit(
   auditId: string,
   userId: string,

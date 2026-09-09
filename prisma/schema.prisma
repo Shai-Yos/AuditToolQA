@@ -119,6 +119,7 @@ model Request {
   title         String
   labels        String    @default("[]")
   isFormal      Boolean  @default(false)
+  isSensitive   Boolean  @default(false)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
   closedAt      DateTime?

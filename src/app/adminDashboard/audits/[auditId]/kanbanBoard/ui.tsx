@@ -12,7 +12,7 @@ import {
   useSensors,
 } from "@dnd-kit/core";
 import type { DragEndEvent, DragStartEvent } from "@dnd-kit/core";
-import { updateRequestStatus, cancelRequest, reworkRequest } from "../actions";
+import { updateRequestStatus, cancelRequest, reworkRequest, toggleRequestSensitive } from "../actions";
 import { NewRequestModal } from "@/components/new-request-modal";
 import { useAuditNav } from "@/components/audit-nav-context";
 import {
@@ -291,6 +291,20 @@ export default function KanbanBoardUI({
     }
   };
 
+  const handleToggleSensitive = async (requestId: string, nextValue: boolean, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setOptimisticRequests((prev) =>
+      prev.map((r) => (r.id === requestId ? { ...r, isSensitive: nextValue } : r)),
+    );
+    const result = await toggleRequestSensitive(requestId, audit.id, nextValue);
+    if (!result.ok) {
+      setOptimisticRequests(audit.requests);
+      alert(result.error ?? "Failed to update sensitivity");
+      return;
+    }
+    router.refresh();
+  };
+
 
   const activeDraggedRequest = activeId ? optimisticRequests.find((r) => r.id === activeId) : null;
 
@@ -475,6 +489,7 @@ export default function KanbanBoardUI({
                                   onClick={(reset) => void handleRequestClick(r.id, r.trackNumber ?? r.title, `/adminDashboard/audits/${audit.id}/requests/${r.id}`, reset)}
                                   onCommentsClick={(e) => { e.stopPropagation(); void handleRequestClick(r.id, r.trackNumber ?? r.title, `/adminDashboard/audits/${audit.id}/requests/${r.id}#comments`); }}
                                   onDocumentsClick={(e) => { e.stopPropagation(); void handleRequestClick(r.id, r.trackNumber ?? r.title, `/adminDashboard/audits/${audit.id}/requests/${r.id}#documents`); }}
+                                  onToggleSensitive={(e) => handleToggleSensitive(r.id, !r.isSensitive, e)}
                                   onCancel={isCancelledCol ? undefined : (e) => handleCancelRequest(r.id, e)}
                                   onRework={isCancelledCol ? (e) => handleReworkRequest(r.id, e) : undefined}
                                 />
@@ -542,6 +557,7 @@ export default function KanbanBoardUI({
                                 onClick={(reset) => void handleRequestClick(r.id, r.trackNumber ?? r.title, `/adminDashboard/audits/${audit.id}/requests/${r.id}`, reset)}
                                 onCommentsClick={(e) => { e.stopPropagation(); void handleRequestClick(r.id, r.trackNumber ?? r.title, `/adminDashboard/audits/${audit.id}/requests/${r.id}#comments`); }}
                                 onDocumentsClick={(e) => { e.stopPropagation(); void handleRequestClick(r.id, r.trackNumber ?? r.title, `/adminDashboard/audits/${audit.id}/requests/${r.id}#documents`); }}
+                                onToggleSensitive={(e) => handleToggleSensitive(r.id, !r.isSensitive, e)}
                                 onCancel={isCancelledCol ? undefined : (e) => handleCancelRequest(r.id, e)}
                                 onRework={isCancelledCol ? (e) => handleReworkRequest(r.id, e) : undefined}
                               />

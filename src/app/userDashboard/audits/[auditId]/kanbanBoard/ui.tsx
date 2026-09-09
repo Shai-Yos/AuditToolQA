@@ -12,7 +12,7 @@ import {
   useSensors,
 } from "@dnd-kit/core";
 import type { DragEndEvent, DragStartEvent } from "@dnd-kit/core";
-import { updateRequestStatus } from "../actions";
+import { updateRequestStatus, toggleRequestSensitive } from "../actions";
 import { NewRequestModal } from "@/components/new-request-modal";
 import { useAuditNav } from "@/components/audit-nav-context";
 import {
@@ -270,6 +270,20 @@ export default function KanbanBoardUI({
     }
   };
 
+  const handleToggleSensitive = async (requestId: string, nextValue: boolean, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setOptimisticRequests((prev) =>
+      prev.map((r) => (r.id === requestId ? { ...r, isSensitive: nextValue } : r)),
+    );
+    const result = await toggleRequestSensitive(requestId, audit.id, nextValue);
+    if (!result.ok) {
+      setOptimisticRequests(audit.requests);
+      alert(result.error ?? "Failed to update sensitivity");
+      return;
+    }
+    router.refresh();
+  };
+
   const activeDraggedRequest = activeId ? optimisticRequests.find((r) => r.id === activeId) : null;
 
   const assigneeOptions = useMemo(() => {
@@ -452,6 +466,7 @@ export default function KanbanBoardUI({
                                   statusColor={col.color}
                                   onClick={(reset) => void handleRequestClick(r.id, r.trackNumber ?? r.title, `${dashboardBase}/audits/${audit.id}/requests/${r.id}`, reset)}
                                   onCommentsClick={(e) => { e.stopPropagation(); void handleRequestClick(r.id, r.trackNumber ?? r.title, `${dashboardBase}/audits/${audit.id}/requests/${r.id}#comments`); }}
+                                  onToggleSensitive={(e) => handleToggleSensitive(r.id, !r.isSensitive, e)}
                                 />
                               ))}
                               {cards.length === 0 && (
@@ -514,6 +529,7 @@ export default function KanbanBoardUI({
                                 statusColor={col.color}
                                 onClick={(reset) => void handleRequestClick(r.id, r.trackNumber ?? r.title, `${dashboardBase}/audits/${audit.id}/requests/${r.id}`, reset)}
                                 onCommentsClick={(e) => { e.stopPropagation(); void handleRequestClick(r.id, r.trackNumber ?? r.title, `${dashboardBase}/audits/${audit.id}/requests/${r.id}#comments`); }}
+                                onToggleSensitive={(e) => handleToggleSensitive(r.id, !r.isSensitive, e)}
                               />
                             ))}
                             {cards.length === 0 && (

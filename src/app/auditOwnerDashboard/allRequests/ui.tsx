@@ -40,12 +40,29 @@ function clampDropdownLeft(left: number, dropdownWidth: number): number {
   return Math.min(Math.max(left, margin), maxLeft);
 }
 
+function SensitiveLabel() {
+  return (
+    <span
+      className="inline-flex items-center rounded-md bg-red-600 px-2 py-0.5 text-[10px] font-semibold text-white"
+      title="Sensitive request"
+      aria-label="Sensitive request"
+    >
+      <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M16 11V8a4 4 0 10-8 0v3" />
+        <rect x="5" y="11" width="14" height="10" rx="2" ry="2" />
+      </svg>
+      <span className="ml-1">Sensitive</span>
+    </span>
+  );
+}
+
 type RequestRow = {
   id: string;
   trackNumber: string | null;
   title: string;
   labels: string[];
   isFormal: boolean;
+  isSensitive: boolean;
   createdAt: string;
   closedAt: string | null;
   auditTitle: string;
@@ -703,6 +720,11 @@ export default function AllRequestsOwnerClient({
 
                       <td className="px-5 py-4">
                         <div className="flex flex-col gap-1">
+                          {r.isSensitive && (
+                            <div className="flex flex-wrap gap-1">
+                              <SensitiveLabel />
+                            </div>
+                          )}
                           {r.labels.some((lbl) => /^FR\d+$/i.test(lbl)) && (
                             <div className="flex flex-wrap gap-1">
                               {r.labels.filter((lbl) => /^FR\d+$/i.test(lbl)).map((lbl) => (

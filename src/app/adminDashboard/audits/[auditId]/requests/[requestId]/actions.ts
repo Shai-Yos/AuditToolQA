@@ -9,6 +9,7 @@ import { getUserPhoto, sendMailViaGraph } from "~/server/lib/graphClient";
 import { syncRequestAssigneesToPlanner, syncRequestBucketToPlanner, syncRequestCategoriesToPlanner, syncRequestEtaToPlannerNotes } from "~/server/lib/planner";
 import { env } from "~/env";
 import { canUserEditWithLock, lockDeniedMessage } from "~/server/lib/requestLockPermissions";
+import { emitAuditEvent, emitRequestEvent } from "~/server/lib/event-bus";
 
 type State = { ok: true } | { ok: false; error: string };
 
@@ -153,6 +154,78 @@ export async function updateRequestBasic(_: State, input: FormData | UpdateReque
   revalidatePath(`/adminDashboard/audits/${auditId}/requests`);
   revalidatePath(`/adminDashboard/audits/${auditId}/requests/${requestId}`);
   return { ok: true };
+}
+
+export async function toggleRequestSensitive(
+  requestId: string,
+  auditId: string,
+  isSensitive: boolean,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const currentUser = await requireUser();
+
+    const existing = await db.request.findUnique({
+      where: { id: requestId },
+      select: {
+        title: true,
+        trackNumber: true,
+        auditTitle: true,
+        lockedBy: true,
+        lockedByName: true,
+        lockedAt: true,
+      },
+    });
+
+    if (!existing) return { ok: false, error: "Request not found" };
+    if (!canUserEditWithLock(existing, currentUser.id)) {
+      return { ok: false, error: lockDeniedMessage(existing.lockedByName) };
+    }
+
+    await db.request.update({
+      where: { id: requestId },
+      data: { isSensitive },
+    });
+
+    const requestAssignees = await db.requestAssignee.findMany({
+      where: { requestId },
+      select: { userId: true },
+    });
+    const notifyIds = requestAssignees.map((assignee) => assignee.userId).filter((id) => id !== currentUser.id);
+
+    await logActivity({
+      type: "REQUEST_UPDATED",
+      actorName: currentUser.name ?? currentUser.email ?? "Admin",
+      targetId: requestId,
+      targetTitle: existing.trackNumber ?? existing.title ?? requestId,
+      meta: {
+        auditId,
+        auditTitle: existing.auditTitle ?? "",
+        field: "isSensitive",
+        value: isSensitive ? "true" : "false",
+      },
+      notifyUserIds: notifyIds,
+    });
+
+    emitAuditEvent(auditId, "kanban");
+    emitAuditEvent(auditId, "requests");
+    emitRequestEvent(requestId, "sensitive");
+    revalidatePath(`/adminDashboard/audits/${auditId}`);
+    revalidatePath(`/adminDashboard/audits/${auditId}/kanbanBoard`);
+    revalidatePath(`/adminDashboard/audits/${auditId}/requests`);
+    revalidatePath(`/adminDashboard/audits/${auditId}/requests/${requestId}`);
+    revalidatePath(`/userDashboard/audits/${auditId}`);
+    revalidatePath(`/userDashboard/audits/${auditId}/kanbanBoard`);
+    revalidatePath(`/userDashboard/audits/${auditId}/requests`);
+    revalidatePath(`/userDashboard/audits/${auditId}/requests/${requestId}`);
+    revalidatePath(`/auditOwnerDashboard/audits/${auditId}`);
+    revalidatePath(`/auditOwnerDashboard/audits/${auditId}/kanbanBoard`);
+    revalidatePath(`/auditOwnerDashboard/audits/${auditId}/requests`);
+    revalidatePath(`/auditOwnerDashboard/audits/${auditId}/requests/${requestId}`);
+    return { ok: true };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Failed to update sensitivity";
+    return { ok: false, error: errorMessage };
+  }
 }
 
 export async function updateRequestAssignees(_: State, input: FormData | UpdateRequestAssigneesInput): Promise<State> {

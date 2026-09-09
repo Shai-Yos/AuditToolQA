@@ -61,6 +61,21 @@ const CUSTOM_LABEL_COLORS = [
   { border: "border-orange-500",  bg: "bg-orange-500",   hover: "hover:bg-orange-600" },
   { border: "border-teal-500",    bg: "bg-teal-500",     hover: "hover:bg-teal-600" },
 ];
+
+function LockIcon({ locked, className = "h-4 w-4" }: { locked: boolean; className?: string }) {
+  return locked ? (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M16 11V8a4 4 0 10-8 0v3" />
+      <rect x="5" y="11" width="14" height="10" rx="2" ry="2" />
+    </svg>
+  ) : (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M19 11H9a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2v-6a2 2 0 00-2-2z" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M11 11V8a4 4 0 017.5-2" />
+    </svg>
+  );
+}
+
 export default function CreateRequestUI({
   auditId,
   auditTitle,
@@ -81,6 +96,7 @@ export default function CreateRequestUI({
   const [customLabelInput, setCustomLabelInput] = useState("");
   const [selectedFr, setSelectedFr] = useState<number>(1);
   const [estimatedDeliveryDate, setEstimatedDeliveryDate] = useState("");
+  const [isSensitive, setIsSensitive] = useState(false);
   const [success, setSuccess] = useState(false);
   const router = useRouter();
   const { setActiveAudit } = useAuditNav();
@@ -176,6 +192,7 @@ export default function CreateRequestUI({
               auditId,
               title: titleEl?.value || "",
               isFormal: isFormalEl?.value || "false",
+              isSensitive,
               returnTab,
               frIndex: frIndexEl?.value || "1",
               labels: selectedLabels,
@@ -242,6 +259,29 @@ export default function CreateRequestUI({
                 <span>Informal</span>
               </label>
             </div>
+          </div>
+
+          <div>
+            <div className="text-sm font-semibold text-slate-700 mb-2">Sensitivity</div>
+            <button
+              type="button"
+              onClick={() => setIsSensitive((prev) => !prev)}
+              aria-pressed={isSensitive}
+              className={[
+                "inline-flex w-full items-center justify-between rounded-xl border px-4 py-3 text-sm font-semibold transition",
+                isSensitive
+                  ? "border-red-200 bg-red-50 text-red-700 ring-2 ring-red-100"
+                  : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50",
+              ].join(" ")}
+            >
+              <span className="inline-flex items-center gap-2">
+                <LockIcon locked={isSensitive} />
+                <span>{isSensitive ? "Sensitive" : "Not Sensitive"}</span>
+              </span>
+              <span className="text-xs font-medium opacity-80">
+                {isSensitive ? "Marked for creation" : "Click to mark sensitive"}
+              </span>
+            </button>
           </div>
 
           {/* ETA */}
