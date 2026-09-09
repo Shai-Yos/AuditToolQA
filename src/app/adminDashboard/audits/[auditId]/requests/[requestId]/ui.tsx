@@ -533,13 +533,13 @@ export default function RequestUI({
                 aria-pressed={isSensitive}
                 title={isSensitive ? "Remove sensitive mark" : "Mark request as sensitive"}
                 className={[
-                  "inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-bold ring-1 transition disabled:cursor-not-allowed disabled:opacity-60",
+                  "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ring-1 transition disabled:cursor-not-allowed disabled:opacity-60",
                   isSensitive
-                    ? "bg-red-600 text-white ring-red-600 hover:bg-red-700"
+                    ? "bg-red-50 text-red-700 ring-red-200 hover:bg-red-100"
                     : "bg-white text-slate-700 ring-slate-300 hover:bg-slate-50",
                 ].join(" ")}
               >
-                <LockIcon locked={isSensitive} className="h-4 w-4" />
+                <LockIcon locked={isSensitive} className="h-3.5 w-3.5" />
                 <span>{isSensitive ? "Sensitive" : "Mark Sensitive"}</span>
               </button>
               {sensitiveError ? <p className="text-xs font-medium text-red-600">{sensitiveError}</p> : null}
@@ -581,7 +581,15 @@ export default function RequestUI({
 
         {/* Basic */}
         <section className="print:hidden mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h2 className="text-sm font-bold text-slate-900">🗂️ Details</h2>
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-sm font-bold text-slate-900">🗂️ Details</h2>
+            {isSensitive ? (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-red-50 px-3 py-1 text-xs font-semibold text-red-700 ring-1 ring-red-200">
+                <LockIcon locked className="h-3.5 w-3.5" />
+                Sensitive
+              </span>
+            ) : null}
+          </div>
 
           <form id="basic-details-form" className="print:hidden mt-4 space-y-4" onSubmit={(e) => {
             e.preventDefault();
@@ -910,6 +918,11 @@ export default function RequestUI({
         {/* Documents */}
         <section id="documents" className="print:hidden mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm scroll-mt-6">
           <h2 className="text-sm font-bold text-slate-900">📎 Documents</h2>
+          {isSensitive && (
+            <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
+              This is a sensitive request - Be careful with uploading documents!
+            </p>
+          )}
 
           <div className="mt-4 space-y-2">
             {documents.length ? (

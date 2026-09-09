@@ -75,7 +75,7 @@ function Tag({
   const styles: Record<string, string> = {
     neutral: "ring-slate-200 bg-white text-slate-700",
     blue: "ring-blue-200 bg-blue-50 text-blue-700",
-    red: "ring-red-200 bg-red-50 text-red-700",
+    red: "ring-1 ring-red-200 bg-red-50 text-red-700",
     green: "ring-emerald-200 bg-emerald-50 text-emerald-700",
     purple: "bg-violet-600 text-white",
     orange: "bg-amber-500 text-white",
@@ -212,6 +212,8 @@ export function RequestCardView({
           ? "border-blue-300 bg-blue-50 ring-2 ring-blue-200 shadow-md"
           : isCancelled
           ? "border-slate-300 bg-slate-100 opacity-60 hover:opacity-80"
+          : req.isSensitive
+          ? "border-red-200 bg-red-50 hover:shadow-md hover:ring-2 hover:ring-red-200 active:bg-red-100 active:border-red-300"
           : "border-slate-200 bg-white hover:shadow-md hover:ring-2 hover:ring-blue-200 active:bg-blue-50 active:border-blue-300"
       }`}
     >
