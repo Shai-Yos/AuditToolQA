@@ -160,6 +160,7 @@ export default async function AuditOwnerChatsPage({
         roles: effectiveRoleString,
       }}
       isAssignedToAudit={isOwner || !!assigneeRecord}
+      dashboardBase="/auditOwnerDashboard"
     />
   );
 }

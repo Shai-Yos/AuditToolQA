@@ -120,6 +120,7 @@ export default function ChatsUI({
   currentUser,
   isAssignedToAudit,
   roomUsers,
+  dashboardBase = "/userDashboard",
 }: {
   auditId: string;
   auditTitle: string;
@@ -133,6 +134,7 @@ export default function ChatsUI({
   currentUser: { id: string; name: string; isAdmin: boolean; roles: string };
   isAssignedToAudit: boolean;
   roomUsers?: { id: string; name: string; image?: string | null }[];
+  dashboardBase?: string;
 }) {
   const router = useRouter();
   const { setActiveAudit } = useAuditNav();
@@ -382,7 +384,7 @@ export default function ChatsUI({
                         frIndex={frNum}
                         onCreateRequest={canCreateRequest ? (text, frIdx) => { setPrefillTitle(text); setPrefillFrIndex(frIdx ?? null); setShowNewRequestModal(true); } : undefined}
                         onPopOut={() => window.open(
-                          `/userDashboard/audits/${encodeURIComponent(auditId)}/chats/popout?channel=${encodeURIComponent(ch)}`,
+                          `${dashboardBase}/audits/${encodeURIComponent(auditId)}/chats/popout?channel=${encodeURIComponent(ch)}`,
                           "_blank"
                         )}
                       />
@@ -405,7 +407,7 @@ export default function ChatsUI({
                         frIndex={frNum}
                         onCreateRequest={canCreateRequest ? (text, frIdx) => { setPrefillTitle(text); setPrefillFrIndex(frIdx ?? null); setShowNewRequestModal(true); } : undefined}
                         onPopOut={() => window.open(
-                          `/userDashboard/audits/${encodeURIComponent(auditId)}/chats/popout?channel=${encodeURIComponent(ch)}`,
+                          `${dashboardBase}/audits/${encodeURIComponent(auditId)}/chats/popout?channel=${encodeURIComponent(ch)}`,
                           "_blank"
                         )}
                       />
