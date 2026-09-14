@@ -1,5 +1,7 @@
 name: Deploy AuditTool
 
+# Minor documentation comment: main branch push triggers deployment on self-hosted runner.
+
 on:
   push:
     branches:
