@@ -32,8 +32,8 @@ function Btn({
       className={[
         "flex h-7 w-7 items-center justify-center rounded-md text-xs font-bold transition",
         active
-          ? "bg-amber-200 text-amber-900"
-          : "text-slate-500 hover:bg-slate-100 hover:text-slate-700",
+          ? "bg-amber-200 text-amber-900 dark:bg-amber-500/35 dark:text-amber-100"
+          : "text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-amber-200/90 dark:hover:bg-amber-900/40 dark:hover:text-amber-100",
         disabled ? "opacity-30 cursor-not-allowed" : "",
       ].join(" ")}
     >
@@ -43,7 +43,7 @@ function Btn({
 }
 
 function Sep() {
-  return <div className="mx-1 h-5 w-px bg-slate-200" />;
+  return <div className="mx-1 h-5 w-px bg-slate-200 dark:bg-amber-700/40" />;
 }
 
 // ── Parse HTML into heading-based sections ───────────────────────────
@@ -119,7 +119,7 @@ function HeadingNodeView(props: any) {
         className={[
           "shrink-0 text-[9px] w-3.5 text-center leading-none select-none transition-colors mt-[0.2em]",
           hasBody
-            ? "text-slate-300 group-hover:text-slate-500 cursor-pointer"
+            ? "text-slate-300 group-hover:text-slate-500 dark:text-slate-500 dark:group-hover:text-slate-300 cursor-pointer"
             : "opacity-0 pointer-events-none",
         ].join(" ")}
       >
@@ -128,7 +128,7 @@ function HeadingNodeView(props: any) {
       <NodeViewContent
         className={[
           "flex-1 !m-0 !p-0 outline-none",
-          level === 1 ? "text-lg font-bold text-slate-900" : level === 2 ? "text-base font-semibold text-slate-800" : "text-sm font-semibold text-slate-700",
+          level === 1 ? "text-lg font-bold text-slate-900 dark:text-slate-100" : level === 2 ? "text-base font-semibold text-slate-800 dark:text-slate-200" : "text-sm font-semibold text-slate-700 dark:text-slate-300",
         ].join(" ")}
       />
     </NodeViewWrapper>
@@ -372,15 +372,24 @@ function Toolbar({
   editor,
   onInsertAuthorStamp,
   canInsertAuthorStamp,
+  fontSize,
+  onFontSizeChange,
 }: {
   editor: ReturnType<typeof useEditor> | null;
   onInsertAuthorStamp?: () => void;
   canInsertAuthorStamp?: boolean;
+  fontSize: 12 | 13 | 14 | 16 | 18;
+  onFontSizeChange: (size: 12 | 13 | 14 | 16 | 18) => void;
 }) {
   if (!editor) return null;
 
+  const fontSizes: Array<12 | 13 | 14 | 16 | 18> = [12, 13, 14, 16, 18];
+  const sizeIndex = fontSizes.indexOf(fontSize);
+  const canDecrease = sizeIndex > 0;
+  const canIncrease = sizeIndex >= 0 && sizeIndex < fontSizes.length - 1;
+
   return (
-    <div className="flex flex-wrap items-center gap-0.5 border-b border-amber-200 bg-amber-50/80 px-2 py-1.5 shrink-0">
+    <div className="flex flex-wrap items-center gap-0.5 border-b border-amber-200 bg-amber-50/80 px-2 py-1.5 shrink-0 dark:border-amber-700/50 dark:bg-amber-950/35">
       <Btn
         title="Bold (Ctrl+B)"
         active={editor.isActive("bold")}
@@ -409,6 +418,47 @@ function Toolbar({
       >
         <span className="line-through">S</span>
       </Btn>
+
+      <Sep />
+
+      <div className="inline-flex items-center gap-1 rounded-xl border border-amber-300 bg-white/95 px-1.5 py-1 shadow-sm ring-1 ring-amber-100/80 dark:border-amber-600/50 dark:bg-amber-950/35 dark:ring-amber-800/40">
+        <span className="hidden md:inline pl-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-amber-700 dark:text-amber-200">Size</span>
+        <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => {
+            if (!canDecrease) return;
+            onFontSizeChange(fontSizes[sizeIndex - 1]!);
+          }}
+          disabled={!canDecrease}
+          className="inline-flex h-6 w-6 items-center justify-center rounded-lg border border-amber-200 bg-amber-50 text-[14px] font-bold leading-none text-amber-800 transition hover:border-amber-300 hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/70 disabled:cursor-not-allowed disabled:opacity-40 dark:border-amber-600/50 dark:bg-amber-950/35 dark:text-amber-100 dark:hover:border-amber-400/60 dark:hover:bg-amber-900/45 dark:focus-visible:ring-amber-500/50"
+          title="Decrease text size"
+          aria-label="Decrease text size"
+        >
+          -
+        </button>
+        <span
+          className="inline-flex h-6 min-w-[3.5rem] items-center justify-center rounded-lg border border-amber-200 bg-amber-100/80 px-2 text-[11px] font-semibold tabular-nums text-amber-900 shadow-inner shadow-amber-200/30 dark:border-amber-600/50 dark:bg-amber-950/35 dark:text-amber-100 dark:shadow-amber-950/30"
+          title="Current text size"
+          aria-label="Current text size"
+        >
+          {fontSize}
+        </span>
+        <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => {
+            if (!canIncrease) return;
+            onFontSizeChange(fontSizes[sizeIndex + 1]!);
+          }}
+          disabled={!canIncrease}
+          className="inline-flex h-6 w-6 items-center justify-center rounded-lg border border-amber-200 bg-amber-50 text-[14px] font-bold leading-none text-amber-800 transition hover:border-amber-300 hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/70 disabled:cursor-not-allowed disabled:opacity-40 dark:border-amber-600/50 dark:bg-amber-950/35 dark:text-amber-100 dark:hover:border-amber-400/60 dark:hover:bg-amber-900/45 dark:focus-visible:ring-amber-500/50"
+          title="Increase text size"
+          aria-label="Increase text size"
+        >
+          +
+        </button>
+      </div>
 
       <Sep />
 
@@ -522,6 +572,7 @@ export function TranscriptionEditor({
   currentAuthor,
   onRequestShortcut,
   stampStorageKey,
+  textSize = 13,
 }: {
   content: string;
   onUpdate?: (html: string) => void;
@@ -535,16 +586,88 @@ export function TranscriptionEditor({
   onRequestShortcut?: (title: string) => void;
   /** sessionStorage key to persist last-stamped author across page refreshes */
   stampStorageKey?: string;
+  /** Optional text size in pixels for transcription content */
+  textSize?: 12 | 13 | 14 | 16 | 18;
 }) {
   const onUpdateRef = useRef(onUpdate);
   const onRequestShortcutRef = useRef(onRequestShortcut);
   const scrollRef = useRef<HTMLDivElement>(null);
   const outerRef = useRef<HTMLDivElement>(null);
   const isLocalEdit = useRef(false);
+  const sizeStorageKey = stampStorageKey ? `ts-font-size-${stampStorageKey}` : null;
   useEffect(() => { onUpdateRef.current = onUpdate; }, [onUpdate]);
   useEffect(() => { onRequestShortcutRef.current = onRequestShortcut; }, [onRequestShortcut]);
   const [selectionText, setSelectionText] = useState<string | null>(null);
   const [btnPos, setBtnPos] = useState<{ top: number; left: number } | null>(null);
+  const [editorTextSize, setEditorTextSize] = useState<12 | 13 | 14 | 16 | 18>(() => {
+    if (typeof window === "undefined" || !sizeStorageKey) return textSize;
+    const raw = Number(localStorage.getItem(sizeStorageKey));
+    if (raw === 12 || raw === 13 || raw === 14 || raw === 16 || raw === 18) {
+      return raw;
+    }
+    return textSize;
+  });
+
+  useEffect(() => {
+    if (!sizeStorageKey) return;
+    const raw = Number(localStorage.getItem(sizeStorageKey));
+    if (raw === 12 || raw === 13 || raw === 14 || raw === 16 || raw === 18) {
+      setEditorTextSize(raw);
+      return;
+    }
+    setEditorTextSize(textSize);
+  }, [sizeStorageKey, textSize]);
+
+  useEffect(() => {
+    if (!sizeStorageKey) return;
+    localStorage.setItem(sizeStorageKey, String(editorTextSize));
+  }, [sizeStorageKey, editorTextSize]);
+
+  const typography = useMemo(() => {
+    switch (editorTextSize) {
+      case 12:
+        return {
+          body: "text-[12px]",
+          h123: "prose-h1:text-base prose-h2:text-sm prose-h3:text-xs",
+          h1: "text-sm font-bold text-slate-900 dark:text-slate-100",
+          h2: "text-xs font-semibold text-slate-800 dark:text-slate-200",
+          h3: "text-[11px] font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wide",
+        };
+      case 14:
+        return {
+          body: "text-[14px]",
+          h123: "prose-h1:text-xl prose-h2:text-lg prose-h3:text-base",
+          h1: "text-lg font-bold text-slate-900 dark:text-slate-100",
+          h2: "text-base font-semibold text-slate-800 dark:text-slate-200",
+          h3: "text-sm font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wide",
+        };
+      case 16:
+        return {
+          body: "text-[16px]",
+          h123: "prose-h1:text-2xl prose-h2:text-xl prose-h3:text-lg",
+          h1: "text-xl font-bold text-slate-900 dark:text-slate-100",
+          h2: "text-lg font-semibold text-slate-800 dark:text-slate-200",
+          h3: "text-base font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wide",
+        };
+      case 18:
+        return {
+          body: "text-[18px]",
+          h123: "prose-h1:text-3xl prose-h2:text-2xl prose-h3:text-xl",
+          h1: "text-2xl font-bold text-slate-900 dark:text-slate-100",
+          h2: "text-xl font-semibold text-slate-800 dark:text-slate-200",
+          h3: "text-lg font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wide",
+        };
+      case 13:
+      default:
+        return {
+          body: "text-[13px]",
+          h123: "prose-h1:text-lg prose-h2:text-base prose-h3:text-sm",
+          h1: "text-base font-bold text-slate-900 dark:text-slate-100",
+          h2: "text-sm font-semibold text-slate-800 dark:text-slate-200",
+          h3: "text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wide",
+        };
+    }
+  }, [editorTextSize]);
 
   // Auto-stamp tracking — only insert stamp when a different user starts editing
   const currentAuthorRef = useRef(currentAuthor);
@@ -672,11 +795,12 @@ export function TranscriptionEditor({
     editorProps: {
       attributes: {
         class: [
-          "prose prose-sm max-w-none outline-none min-h-full px-4 pt-3 pb-10 text-[13px] leading-relaxed text-slate-800",
-          "prose-headings:text-slate-900 prose-headings:font-semibold",
-          "prose-h1:text-lg prose-h2:text-base prose-h3:text-sm",
+          "prose prose-sm max-w-none outline-none min-h-full px-4 pt-3 pb-10 leading-relaxed text-slate-800 dark:text-slate-200",
+          typography.body,
+          "prose-headings:text-slate-900 prose-headings:font-semibold dark:prose-headings:text-slate-100",
+          typography.h123,
           "prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0",
-          "prose-blockquote:border-amber-300 prose-blockquote:text-slate-600",
+          "prose-blockquote:border-amber-300 prose-blockquote:text-slate-600 dark:prose-blockquote:border-amber-500/40 dark:prose-blockquote:text-slate-300",
           readOnly ? "cursor-default" : "",
         ].join(" "),
       },
@@ -716,7 +840,7 @@ export function TranscriptionEditor({
       // Notify parent so it can scroll to bottom after DOM updates
       requestAnimationFrame(() => onExternalUpdateRef.current?.());
     }
-  }, [editor, content]);
+  }, [editor, content, stampKey]);
 
   // Sync editable state
   useEffect(() => {
@@ -741,6 +865,8 @@ export function TranscriptionEditor({
             if (editor) insertAuthorStamp(editor);
           }}
           canInsertAuthorStamp={Boolean(currentAuthorRef.current)}
+          fontSize={editorTextSize}
+          onFontSizeChange={setEditorTextSize}
         />
       )}
       {!readOnly && selectionText && btnPos && onRequestShortcutRef.current && (
@@ -754,7 +880,7 @@ export function TranscriptionEditor({
             onRequestShortcutRef.current?.(title);
           }}
           style={{ top: btnPos.top, left: btnPos.left }}
-          className="absolute z-30 flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-[11px] font-semibold text-amber-800 shadow-sm hover:bg-amber-100 hover:border-amber-400 transition-colors"
+          className="absolute z-30 flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-[11px] font-semibold text-amber-800 shadow-sm hover:bg-amber-100 hover:border-amber-400 transition-colors dark:border-amber-600/50 dark:bg-amber-900/50 dark:text-amber-100 dark:hover:border-amber-400/80 dark:hover:bg-amber-800/60"
         >
           <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
@@ -774,12 +900,15 @@ export function TranscriptionEditor({
           <div className="px-4 py-3">
             {preamble && (
               <div
-                className="prose prose-sm max-w-none text-[13px] leading-relaxed text-slate-800 prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0 prose-blockquote:border-amber-300 prose-blockquote:text-slate-600"
+                className={[
+                  "prose prose-sm max-w-none leading-relaxed text-slate-800 dark:text-slate-200 prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0 prose-blockquote:border-amber-300 prose-blockquote:text-slate-600 dark:prose-blockquote:border-amber-500/40 dark:prose-blockquote:text-slate-300",
+                  typography.body,
+                ].join(" ")}
                 dangerouslySetInnerHTML={{ __html: preamble }}
               />
             )}
             {sections.length === 0 && !preamble && (
-              <p className="text-slate-400 text-sm italic">No transcription yet.</p>
+              <p className="text-slate-400 dark:text-slate-500 text-sm italic">No transcription yet.</p>
             )}
             {sections.map((section) => {
               const isCollapsed = collapsed.has(section.id);
@@ -789,21 +918,24 @@ export function TranscriptionEditor({
                   <div
                     role="button"
                     tabIndex={0}
-                    className="flex items-center gap-1.5 group select-none cursor-pointer rounded py-0.5 hover:bg-amber-50/60 transition-colors -ml-1 pl-1"
+                    className="flex items-center gap-1.5 group select-none cursor-pointer rounded py-0.5 hover:bg-amber-50/60 dark:hover:bg-slate-800 transition-colors -ml-1 pl-1"
                     onClick={() => toggleCollapse(section.id)}
                     onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleCollapse(section.id); } }}
                   >
-                    <span className="shrink-0 w-3.5 text-[9px] text-slate-400 group-hover:text-slate-600 transition-colors text-center leading-none tabular-nums">
+                    <span className="shrink-0 w-3.5 text-[9px] text-slate-400 group-hover:text-slate-600 dark:text-slate-500 dark:group-hover:text-slate-300 transition-colors text-center leading-none tabular-nums">
                       {hasBody ? (isCollapsed ? "▶" : "▼") : ""}
                     </span>
                     <span
-                      className={section.level === 1 ? "text-base font-bold text-slate-900" : section.level === 2 ? "text-sm font-semibold text-slate-800" : "text-xs font-semibold text-slate-700 uppercase tracking-wide"}
+                      className={section.level === 1 ? typography.h1 : section.level === 2 ? typography.h2 : typography.h3}
                       dangerouslySetInnerHTML={{ __html: section.headingHtml }}
                     />
                   </div>
                   {!isCollapsed && section.bodyHtml && (
                     <div
-                      className="ml-5 prose prose-sm max-w-none text-[13px] leading-relaxed text-slate-800 prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0 prose-blockquote:border-amber-300 prose-blockquote:text-slate-600"
+                      className={[
+                        "ml-5 prose prose-sm max-w-none leading-relaxed text-slate-800 dark:text-slate-200 prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0 prose-blockquote:border-amber-300 prose-blockquote:text-slate-600 dark:prose-blockquote:border-amber-500/40 dark:prose-blockquote:text-slate-300",
+                        typography.body,
+                      ].join(" ")}
                       dangerouslySetInnerHTML={{ __html: section.bodyHtml }}
                     />
                   )}

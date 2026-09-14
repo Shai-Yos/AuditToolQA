@@ -1261,7 +1261,7 @@ export function ChatPanel({
                 if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
               }}
               onRequestShortcut={readOnly ? undefined : (title) => onCreateRequest?.(title, frIndex)}
-              stampStorageKey={readOnly ? undefined : channel}
+              stampStorageKey={channel}
             />
             {typingNames.length > 0 && (
             <div className="absolute top-1 left-0 right-0 flex justify-center pointer-events-none z-10">
