@@ -10,6 +10,11 @@ import { createNotifications } from "@/server/helpers/notifications";
 import { getCachedAuditPrivilege } from "@/server/lib/userPrivilegeCache";
 import { emitAuditEvent, emitAuditTabCounts } from "@/server/lib/event-bus";
 import { getAuditTabCounts } from "@/server/lib/audit-tab-counts";
+import { getTranscriptionLock, isLockFresh } from "@/server/lib/transcriptionLock";
+
+function canEditWithTranscriptionLock(lock: { lockedBy: string | null; lockedAt: Date | null }, userId: string): boolean {
+  return lock.lockedBy === userId && isLockFresh(lock.lockedAt);
+}
 
 export async function GET(
   req: NextRequest,
@@ -165,6 +170,20 @@ export async function POST(
   const authorRole: string | null = effectiveRole
     ? roleForChannel(effectiveRole, channel)
     : null;
+
+  if (channel.endsWith("-transcription")) {
+    const lock = await getTranscriptionLock(auditId, channel);
+    if (!lock || !canEditWithTranscriptionLock(lock, user.id)) {
+      const lockedByOther = !!lock.lockedBy && lock.lockedBy !== user.id && isLockFresh(lock.lockedAt);
+      return NextResponse.json(
+        {
+          error: lockedByOther ? "locked" : "lock-required",
+          lockedByName: lockedByOther ? lock.lockedByName : null,
+        },
+        { status: 409 },
+      );
+    }
+  }
 
   // For transcription channels, reuse existing message instead of creating duplicates
   if (channel.endsWith("-transcription")) {
@@ -335,6 +354,20 @@ export async function PATCH(
     return NextResponse.json({ error: "Message not found" }, { status: 404 });
   }
 
+  if (message.channel.endsWith("-transcription")) {
+    const lock = await getTranscriptionLock(auditId, message.channel);
+    if (!lock || !canEditWithTranscriptionLock(lock, user.id)) {
+      const lockedByOther = !!lock.lockedBy && lock.lockedBy !== user.id && isLockFresh(lock.lockedAt);
+      return NextResponse.json(
+        {
+          error: lockedByOther ? "locked" : "lock-required",
+          lockedByName: lockedByOther ? lock.lockedByName : null,
+        },
+        { status: 409 },
+      );
+    }
+  }
+
   // AUDIT_OWNER: use createdById from privilege cache — avoids an extra DB round-trip
   const privilege = await getCachedAuditPrivilege(user.id, auditId);
   const isOwnerForPatch =
@@ -455,6 +488,24 @@ export async function DELETE(
 
   if (!message || message.auditId !== auditId) {
     return NextResponse.json({ error: "Message not found" }, { status: 404 });
+  }
+
+  if (message.channel.endsWith("-transcription")) {
+    const lock = await getAuditLock(auditId);
+    if (!lock) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+
+    if (!canEditWithAuditLock(lock, user.id)) {
+      const lockedByOther = !!lock.lockedBy && lock.lockedBy !== user.id && isLockFresh(lock.lockedAt);
+      return NextResponse.json(
+        {
+          error: lockedByOther ? "locked" : "lock-required",
+          lockedByName: lockedByOther ? lock.lockedByName : null,
+        },
+        { status: 409 },
+      );
+    }
   }
 
   // AUDIT_OWNER: use createdById from privilege cache — avoids an extra DB round-trip

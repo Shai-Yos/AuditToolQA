@@ -567,6 +567,15 @@ export function ChatPanel({
   const [typingNames, setTypingNames] = useState<string[]>([]);
   const [replyingTo, setReplyingTo] = useState<{ id: string; authorName: string; text: string } | null>(null);
   const localSyncRef = useRef<BroadcastChannel | null>(null);
+  const [transcriptionLockState, setTranscriptionLockState] = useState<"checking" | "available" | "owned" | "blocked" | "error">("checking");
+  const [transcriptionLockOwner, setTranscriptionLockOwner] = useState<string | null>(null);
+  const transcriptionLockStateRef = useRef(transcriptionLockState);
+
+  useEffect(() => {
+    transcriptionLockStateRef.current = transcriptionLockState;
+  }, [transcriptionLockState]);
+
+  const transcriptionReadOnly = rightPanel && transcriptionLockState !== "owned";
 
   useEffect(() => {
     if (!exportStatusText) return;
@@ -611,6 +620,7 @@ export function ChatPanel({
   // Typing indicator — report only (poll replaced by SSE-triggered fetch)
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reportTyping = useCallback(() => {
+    if (transcriptionReadOnly) return;
     if (typingTimeoutRef.current) return; // throttle: max once per 2s
     fetch(`/api/audits/${auditId}/chat/typing`, {
       method: "POST",
@@ -618,7 +628,7 @@ export function ChatPanel({
       body: JSON.stringify({ channel }),
     }).catch(() => {});
     typingTimeoutRef.current = setTimeout(() => { typingTimeoutRef.current = null; }, 2000);
-  }, [auditId, channel]);
+  }, [auditId, channel, transcriptionReadOnly]);
 
   const fetchTyping = useCallback(async () => {
     try {
@@ -628,6 +638,124 @@ export function ChatPanel({
       setTypingNames(names);
     } catch { /* ignore */ }
   }, [auditId, channel]);
+
+  const acquireTranscriptionLock = useCallback(async () => {
+    if (!rightPanel) return true;
+    try {
+      const res = await fetch(`/api/audits/${auditId}/transcription-lock?channel=${encodeURIComponent(channel)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userName: currentUserName }),
+      });
+
+      if (res.ok) {
+        setTranscriptionLockOwner(null);
+        setTranscriptionLockState("owned");
+        return true;
+      }
+
+      const payload = (await res.json().catch(() => ({}))) as { error?: string; lockedByName?: string };
+      if (res.status === 409 && payload.error === "locked") {
+        setTranscriptionLockOwner(payload.lockedByName ?? "Another user");
+        setTranscriptionLockState("blocked");
+        return false;
+      }
+
+      setTranscriptionLockOwner(null);
+      setTranscriptionLockState("error");
+      return false;
+    } catch {
+      setTranscriptionLockOwner(null);
+      setTranscriptionLockState("available");
+      return true;
+    }
+  }, [auditId, currentUserName, rightPanel]);
+
+  const refreshTranscriptionLock = useCallback(async () => {
+    if (!rightPanel) return true;
+    try {
+      const res = await fetch(`/api/audits/${auditId}/transcription-lock?channel=${encodeURIComponent(channel)}`, { cache: "no-store" });
+      if (!res.ok) {
+        setTranscriptionLockOwner(null);
+        setTranscriptionLockState("error");
+        return false;
+      }
+      const payload = (await res.json()) as { owned?: boolean; locked: boolean; lockedByName?: string | null };
+      if (payload.owned) {
+        setTranscriptionLockOwner(null);
+        setTranscriptionLockState("owned");
+      } else if (payload.locked) {
+        setTranscriptionLockOwner(payload.lockedByName ?? "Another user");
+        setTranscriptionLockState("blocked");
+      } else {
+        setTranscriptionLockOwner(null);
+        setTranscriptionLockState("available");
+      }
+      return true;
+    } catch {
+      setTranscriptionLockOwner(null);
+      setTranscriptionLockState("error");
+      return false;
+    }
+  }, [auditId, rightPanel]);
+
+  const heartbeatTranscriptionLock = useCallback(async () => {
+    if (!rightPanel || transcriptionLockStateRef.current !== "owned") return false;
+    try {
+      const res = await fetch(`/api/audits/${auditId}/transcription-lock?channel=${encodeURIComponent(channel)}`, { method: "PATCH" });
+      if (!res.ok) {
+        const payload = (await res.json().catch(() => ({}))) as { error?: string };
+        if (payload.error === "Not your lock") {
+          setTranscriptionLockOwner(null);
+          setTranscriptionLockState("blocked");
+        } else {
+          setTranscriptionLockState("error");
+        }
+        return false;
+      }
+      return true;
+    } catch {
+      setTranscriptionLockState("error");
+      return false;
+    }
+  }, [auditId, rightPanel]);
+
+  const releaseTranscriptionLock = useCallback(async (force = false) => {
+    if (!rightPanel) return;
+    try {
+      await fetch(`/api/audits/${auditId}/transcription-lock?channel=${encodeURIComponent(channel)}${force ? "&force=1" : ""}`, { method: "DELETE" });
+    } catch {
+      // Ignore release failures on unload.
+    }
+  }, [auditId, rightPanel]);
+
+  useEffect(() => {
+    if (!rightPanel) return;
+
+    let cancelled = false;
+    void refreshTranscriptionLock();
+
+    const heartbeatId = window.setInterval(() => {
+      if (cancelled) return;
+      if (transcriptionLockStateRef.current === "owned") {
+        void heartbeatTranscriptionLock();
+      } else {
+        void refreshTranscriptionLock();
+      }
+    }, 10_000);
+
+    const onBeforeUnload = () => {
+      void releaseTranscriptionLock();
+    };
+
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => {
+      cancelled = true;
+      window.clearInterval(heartbeatId);
+      window.removeEventListener("beforeunload", onBeforeUnload);
+      void releaseTranscriptionLock();
+    };
+  }, [heartbeatTranscriptionLock, refreshTranscriptionLock, releaseTranscriptionLock, rightPanel]);
 
   const exportNow = useCallback(async () => {
     if (!rightPanel || exportingTranscription) return;
@@ -689,8 +817,8 @@ const savingRef = useRef(false);
 // Treat TipTap's empty output as truly empty
 const isEmptyHtml = (html: string) => !html.replace(/<[^>]*>/g, "").trim();
 
-useEffect(() => {
-  if (!rightPanel) return;
+  useEffect(() => {
+    if (!rightPanel || transcriptionReadOnly) return;
 
   const save = async () => {
     const v = textRef.current;
@@ -828,7 +956,7 @@ useEffect(() => {
   }, 1500);
 
   return () => clearInterval(id);
-}, [rightPanel, auditId, channel]);
+}, [rightPanel, transcriptionReadOnly, auditId, channel]);
 
   // Track scroll position
   const handleScroll = useCallback(() => {
@@ -969,10 +1097,11 @@ useEffect(() => {
   const streamEvent = useContext(AuditStreamContext);
   useEffect(() => {
     if (!streamEvent.data || streamEvent.data === "connected") return;
-    if (streamEvent.data === "chat") void fetchIncremental();
-    if (streamEvent.data === "typing") void fetchTyping();
+      if (streamEvent.data === "chat") void fetchIncremental();
+      if (streamEvent.data === "typing") void fetchTyping();
+      if (streamEvent.data === "lock") void refreshTranscriptionLock();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [streamEvent]);
+  }, [streamEvent, fetchIncremental, fetchTyping, refreshTranscriptionLock]);
 
   // Popout windows are not wrapped by AuditNavProvider, so they need their
   // own stream subscription to stay in sync with edits from the main page.
@@ -985,6 +1114,7 @@ useEffect(() => {
       if (!data || data === "connected") return;
       if (data === "chat") void fetchIncremental();
       if (data === "typing") void fetchTyping();
+      if (data === "lock") void refreshTranscriptionLock();
     };
     es.onerror = () => {
       liveStatusRef.current = "error";
@@ -995,7 +1125,7 @@ useEffect(() => {
       es.close();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [popout, auditId, fetchIncremental, fetchTyping]);
+  }, [popout, auditId, fetchIncremental, fetchTyping, refreshTranscriptionLock]);
 
   // Visibility change: re-fetch on tab focus
   useEffect(() => {
@@ -1302,17 +1432,58 @@ useEffect(() => {
             {frIndex !== undefined && (
               <FrRequestsStrip auditId={auditId} frIndex={frIndex} popout={!!popout} />
             )}
+
+            {rightPanel && transcriptionLockState === "available" && (
+              <div className="mx-3 mt-3 flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-900 sm:mx-4">
+                <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-sm">✓</span>
+                <div className="min-w-0 flex-1">
+                  <div className="font-semibold text-emerald-950">Available to edit</div>
+                  <div className="text-emerald-700/90">No one is editing right now. Click Start editing to lock the transcription.</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { void acquireTranscriptionLock(); }}
+                  className="ml-auto rounded-full bg-slate-950 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm transition hover:bg-slate-800"
+                >
+                  Start editing
+                </button>
+              </div>
+            )}
+            {rightPanel && transcriptionLockState === "blocked" && (
+              <div className="mx-3 mt-3 flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900 sm:mx-4">
+                <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber-100 text-sm">⏳</span>
+                <div className="min-w-0 flex-1">
+                  <div className="font-semibold text-amber-950">Currently locked</div>
+                  <div className="text-amber-700/90">Locked by {transcriptionLockOwner ?? "another user"}. Read-only until the lock is released.</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { void releaseTranscriptionLock(true).then(() => void refreshTranscriptionLock()); }}
+                  className="ml-auto rounded-full border border-amber-300 bg-white px-3 py-1.5 text-[11px] font-semibold text-amber-900 shadow-sm transition hover:bg-amber-100"
+                >
+                  Unlock for others
+                </button>
+              </div>
+            )}
+            {rightPanel && transcriptionLockState === "checking" && (
+              <div className="mx-3 mt-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 sm:mx-4">
+                <span className="inline-flex h-2 w-2 rounded-full bg-slate-400 mr-2 align-middle" />
+                Checking transcription lock…
+              </div>
+            )}
+
             <TranscriptionEditor
               content={text}
-              onUpdate={(html) => { setText(html); reportTyping(); }}
-              currentAuthor={currentUserName}
+              onUpdate={transcriptionReadOnly ? undefined : (html) => { setText(html); reportTyping(); }}
+              readOnly={transcriptionReadOnly}
+              currentAuthor={transcriptionReadOnly ? undefined : currentUserName}
               scrollRef={transcriptionScrollRef}
               onScroll={handleScroll}
               onExternalUpdate={() => {
                 const el = transcriptionScrollRef.current;
                 if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
               }}
-              onRequestShortcut={(title) => onCreateRequest?.(title, frIndex)}
+              onRequestShortcut={transcriptionReadOnly ? undefined : (title) => onCreateRequest?.(title, frIndex)}
               stampStorageKey={channel}
             />
             {typingNames.length > 0 && (

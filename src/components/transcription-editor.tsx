@@ -374,12 +374,14 @@ function Toolbar({
   canInsertAuthorStamp,
   fontSize,
   onFontSizeChange,
+  readOnly,
 }: {
   editor: ReturnType<typeof useEditor> | null;
   onInsertAuthorStamp?: () => void;
   canInsertAuthorStamp?: boolean;
   fontSize: 12 | 13 | 14 | 16 | 18;
   onFontSizeChange: (size: 12 | 13 | 14 | 16 | 18) => void;
+  readOnly?: boolean;
 }) {
   if (!editor) return null;
 
@@ -390,36 +392,40 @@ function Toolbar({
 
   return (
     <div className="flex flex-wrap items-center gap-0.5 border-b border-amber-200 bg-amber-50/80 px-2 py-1.5 shrink-0 dark:border-amber-700/50 dark:bg-amber-950/35">
-      <Btn
-        title="Bold (Ctrl+B)"
-        active={editor.isActive("bold")}
-        onClick={() => editor.chain().focus().toggleBold().run()}
-      >
-        B
-      </Btn>
-      <Btn
-        title="Italic (Ctrl+I)"
-        active={editor.isActive("italic")}
-        onClick={() => editor.chain().focus().toggleItalic().run()}
-      >
-        <span className="italic">I</span>
-      </Btn>
-      <Btn
-        title="Underline (Ctrl+U)"
-        active={editor.isActive("underline")}
-        onClick={() => editor.chain().focus().toggleUnderline().run()}
-      >
-        <span className="underline">U</span>
-      </Btn>
-      <Btn
-        title="Strikethrough"
-        active={editor.isActive("strike")}
-        onClick={() => editor.chain().focus().toggleStrike().run()}
-      >
-        <span className="line-through">S</span>
-      </Btn>
+      {!readOnly && (
+        <>
+          <Btn
+            title="Bold (Ctrl+B)"
+            active={editor.isActive("bold")}
+            onClick={() => editor.chain().focus().toggleBold().run()}
+          >
+            B
+          </Btn>
+          <Btn
+            title="Italic (Ctrl+I)"
+            active={editor.isActive("italic")}
+            onClick={() => editor.chain().focus().toggleItalic().run()}
+          >
+            <span className="italic">I</span>
+          </Btn>
+          <Btn
+            title="Underline (Ctrl+U)"
+            active={editor.isActive("underline")}
+            onClick={() => editor.chain().focus().toggleUnderline().run()}
+          >
+            <span className="underline">U</span>
+          </Btn>
+          <Btn
+            title="Strikethrough"
+            active={editor.isActive("strike")}
+            onClick={() => editor.chain().focus().toggleStrike().run()}
+          >
+            <span className="line-through">S</span>
+          </Btn>
 
-      <Sep />
+          <Sep />
+        </>
+      )}
 
       <div className="inline-flex items-center gap-1 rounded-xl border border-amber-300 bg-white/95 px-1.5 py-1 shadow-sm ring-1 ring-amber-100/80 dark:border-amber-600/50 dark:bg-amber-950/35 dark:ring-amber-800/40">
         <span className="hidden md:inline pl-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-amber-700 dark:text-amber-200">Size</span>
@@ -460,15 +466,17 @@ function Toolbar({
         </button>
       </div>
 
-      <Sep />
+      {!readOnly && (
+        <>
+          <Sep />
 
-      <Btn
-        title="Heading 1"
-        active={editor.isActive("heading", { level: 1 })}
-        onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
-      >
-        H1
-      </Btn>
+          <Btn
+            title="Heading 1"
+            active={editor.isActive("heading", { level: 1 })}
+            onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
+          >
+            H1
+          </Btn>
       <Btn
         title="Heading 2"
         active={editor.isActive("heading", { level: 2 })}
@@ -556,6 +564,8 @@ function Toolbar({
           <path fillRule="evenodd" d="M12.207 2.232a.75.75 0 0 1 1.06-.025l5.5 5.25a.75.75 0 0 1 0 1.085l-5.5 5.25a.75.75 0 0 1-1.036-1.085l4.146-3.957H6.375a3.875 3.875 0 0 0 0 7.75H9.25a.75.75 0 0 1 0 1.5H6.375a5.375 5.375 0 0 1 0-10.75h10.003l-4.146-3.957a.75.75 0 0 1-.025-1.06Z" clipRule="evenodd" />
         </svg>
       </Btn>
+        </>
+      )}
     </div>
   );
 }
@@ -858,17 +868,16 @@ export function TranscriptionEditor({
 
   return (
     <div ref={outerRef} className="flex flex-col flex-1 min-h-0 relative">
-      {!readOnly && (
-        <Toolbar
-          editor={editor}
-          onInsertAuthorStamp={() => {
-            if (editor) insertAuthorStamp(editor);
-          }}
-          canInsertAuthorStamp={Boolean(currentAuthorRef.current)}
-          fontSize={editorTextSize}
-          onFontSizeChange={setEditorTextSize}
-        />
-      )}
+      <Toolbar
+        editor={editor}
+        onInsertAuthorStamp={() => {
+          if (editor) insertAuthorStamp(editor);
+        }}
+        canInsertAuthorStamp={Boolean(currentAuthorRef.current)}
+        fontSize={editorTextSize}
+        onFontSizeChange={setEditorTextSize}
+        readOnly={readOnly}
+      />
       {!readOnly && selectionText && btnPos && onRequestShortcutRef.current && (
         <button
           type="button"

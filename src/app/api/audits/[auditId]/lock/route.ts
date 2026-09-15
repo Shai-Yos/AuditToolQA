@@ -1,12 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/server/db";
 import { requireUser } from "@/server/helpers/currentUser";
+import { getCachedAuditPrivilege } from "@/server/lib/userPrivilegeCache";
+import { buildUserRolesFromJson, transcriptionFrIndicesFromRole } from "@/server/lib/roomRoles";
+import { emitAuditEvent } from "@/server/lib/event-bus";
 
 const LOCK_TTL_MS = 30_000; // lock expires after 30s without a heartbeat
 
 function isLockFresh(lockedAt: Date | null): boolean {
   if (!lockedAt) return false;
   return Date.now() - lockedAt.getTime() < LOCK_TTL_MS;
+}
+
+function canForceUnlockAudit(userRole: string, effectiveRole: string): boolean {
+  if (userRole === "ADMIN") return true;
+  return transcriptionFrIndicesFromRole(effectiveRole).length > 0;
 }
 
 // GET — check lock status without acquiring
@@ -65,6 +73,8 @@ export async function POST(
     data: { lockedBy: user.id, lockedByName: userName, lockedAt: new Date() },
   });
 
+  emitAuditEvent(auditId, "lock");
+
   return NextResponse.json({ ok: true });
 }
 
@@ -104,17 +114,40 @@ export async function DELETE(
 
   const audit = await db.audit.findUnique({
     where: { id: auditId },
-    select: { lockedBy: true },
+    select: { lockedBy: true, lockedByName: true, createdById: true, roomRolesJson: true },
   });
 
   if (!audit) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  // Only release if you own the lock
+  const force = _req.nextUrl.searchParams.get("force") === "1";
+
   if (audit.lockedBy === user.id) {
     await db.audit.update({
       where: { id: auditId },
       data: { lockedBy: null, lockedByName: null, lockedAt: null },
     });
+    emitAuditEvent(auditId, "lock");
+    return NextResponse.json({ ok: true });
   }
+
+  if (!force) {
+    return NextResponse.json({ ok: true });
+  }
+
+  const privilege = await getCachedAuditPrivilege(user.id, auditId);
+  const effectiveRole = audit.roomRolesJson
+    ? buildUserRolesFromJson(audit.roomRolesJson).get(user.id) ?? privilege.assignee?.role ?? ""
+    : privilege.assignee?.role ?? "";
+
+  if (!canForceUnlockAudit(user.role, effectiveRole)) {
+    return NextResponse.json({ error: "Not allowed to force unlock" }, { status: 403 });
+  }
+
+  await db.audit.update({
+    where: { id: auditId },
+    data: { lockedBy: null, lockedByName: null, lockedAt: null },
+  });
+
+  emitAuditEvent(auditId, "lock");
 
   return NextResponse.json({ ok: true });
 }
