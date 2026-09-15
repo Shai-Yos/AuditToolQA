@@ -207,7 +207,7 @@ export async function POST(
         where: { id: existing.id },
         data: { text, editedAt: new Date() },
       });
-      emitAuditEvent(auditId, "chat");
+      emitAuditEvent(auditId, `chat:${channel}`);
       emitAuditTabCounts(auditId, await getAuditTabCounts(auditId));
       return NextResponse.json({
         ok: true,
@@ -314,7 +314,7 @@ export async function POST(
     }
   })();
 
-  emitAuditEvent(auditId, "chat");
+  emitAuditEvent(auditId, `chat:${channel}`);
   emitAuditTabCounts(auditId, await getAuditTabCounts(auditId));
 
   return NextResponse.json({
@@ -452,7 +452,7 @@ export async function PATCH(
     data: { text: finalText, editedAt: new Date(), authorName: updatedAuthorName },
   });
 
-  emitAuditEvent(auditId, "chat");
+  emitAuditEvent(auditId, `chat:${message.channel}`);
   emitAuditTabCounts(auditId, await getAuditTabCounts(auditId));
 
   return NextResponse.json({
@@ -537,7 +537,7 @@ export async function DELETE(
 
   await db.chatMessage.delete({ where: { id: messageId } });
 
-  emitAuditEvent(auditId, "chat");
+  emitAuditEvent(auditId, `chat:${message.channel}`);
   emitAuditTabCounts(auditId, await getAuditTabCounts(auditId));
 
   return NextResponse.json({ ok: true });

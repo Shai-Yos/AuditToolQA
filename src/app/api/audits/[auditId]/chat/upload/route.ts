@@ -186,7 +186,7 @@ export async function POST(
     // Never let notification crash the upload response
   }
 
-  emitAuditEvent(auditId, "chat");
+  emitAuditEvent(auditId, `chat:${channel}`);
   emitAuditTabCounts(auditId, await getAuditTabCounts(auditId));
 
   return NextResponse.json({

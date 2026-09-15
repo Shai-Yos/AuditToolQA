@@ -1093,11 +1093,11 @@ export function ChatPanel({
   const streamEvent = useContext(AuditStreamContext);
   useEffect(() => {
     if (!streamEvent.data || streamEvent.data === "connected") return;
-    if (streamEvent.data === "chat") void fetchIncremental();
+    if (streamEvent.data === `chat:${channel}`) void fetchIncremental();
     if (streamEvent.data === "typing") void fetchTyping();
     if (streamEvent.data === "lock") void refreshTranscriptionLock();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [streamEvent, fetchIncremental, fetchTyping, refreshTranscriptionLock]);
+  }, [streamEvent, channel, fetchIncremental, fetchTyping, refreshTranscriptionLock]);
 
   // Popout windows are not wrapped by AuditNavProvider, so they need their
   // own stream subscription to stay in sync with edits from the main page.
@@ -1108,7 +1108,7 @@ export function ChatPanel({
     es.onmessage = (event) => {
       const data = event.data;
       if (!data || data === "connected") return;
-      if (data === "chat") void fetchIncremental();
+      if (data === `chat:${channel}`) void fetchIncremental();
       if (data === "typing") void fetchTyping();
       if (data === "lock") void refreshTranscriptionLock();
     };
@@ -1121,7 +1121,7 @@ export function ChatPanel({
       es.close();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [popout, auditId, fetchIncremental, fetchTyping, refreshTranscriptionLock]);
+  }, [popout, auditId, channel, fetchIncremental, fetchTyping, refreshTranscriptionLock]);
 
   // Initial fetch on mount
   useEffect(() => {
