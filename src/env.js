@@ -23,6 +23,13 @@ export const env = createEnv({
     AZURE_AD_TENANT_ID: z.string(),
     OUTLOOK_ORGANIZER_EMAIL: z.string().optional(),
     CRON_SECRET: z.string().optional(),
+    // Interval (in minutes) for the in-process transcription auto-export
+    // scheduler started in src/instrumentation.ts. Unset or "0" = disabled.
+    // Recommended: "20".
+    TRANSCRIPTION_EXPORT_INTERVAL_MINUTES: z
+      .string()
+      .regex(/^\d+$/, "must be a non-negative integer")
+      .optional(),
     // Keep false until delegated Tasks.ReadWrite has been granted in Entra ID.
     PLANNER_SYNC_ENABLED: z.enum(["true", "false"]).optional(),
     // Planner synchronization is disabled until both values are configured.
@@ -55,6 +62,8 @@ export const env = createEnv({
     AZURE_AD_TENANT_ID: process.env.AZURE_AD_TENANT_ID,
     OUTLOOK_ORGANIZER_EMAIL: process.env.OUTLOOK_ORGANIZER_EMAIL,
     CRON_SECRET: process.env.CRON_SECRET,
+    TRANSCRIPTION_EXPORT_INTERVAL_MINUTES:
+      process.env.TRANSCRIPTION_EXPORT_INTERVAL_MINUTES,
     PLANNER_SYNC_ENABLED: process.env.PLANNER_SYNC_ENABLED,
     PLANNER_PLAN_ID: process.env.PLANNER_PLAN_ID,
     PLANNER_BUCKET_ID: process.env.PLANNER_BUCKET_ID,

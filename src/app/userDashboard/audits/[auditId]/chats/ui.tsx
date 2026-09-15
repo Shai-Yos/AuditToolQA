@@ -715,8 +715,38 @@ export function ChatPanel({
     }
   }, [auditId, canEditTranscription]);
 
+  // Exposed by the autosave `useEffect` below so releaseTranscriptionLock can
+  // flush any pending text before handing over the lock. Otherwise the last
+  // 0–1500ms of the scribe's typing (autosave interval hasn't ticked yet)
+  // never reaches the DB and the next scribe / viewers see stale content.
+  const savePendingRef = useRef<(() => Promise<void>) | null>(null);
+
   const releaseTranscriptionLock = useCallback(async (force = false) => {
     if (!canEditTranscription) return;
+    // Flush any unsaved edits before releasing so the incoming scribe (or the
+    // read-only viewers) receive the outgoing scribe's final keystrokes. Skip
+    // on force release — that path is for stealing another user's lock and
+    // has nothing local to save.
+    if (!force && transcriptionLockStateRef.current === "owned") {
+      const save = savePendingRef.current;
+      if (save) {
+        const waitIdle = async () => {
+          const start = Date.now();
+          while (savingRef.current && Date.now() - start < 5000) {
+            await new Promise((r) => setTimeout(r, 30));
+          }
+        };
+        try {
+          await waitIdle();
+          if (textRef.current !== savedContentRef.current) {
+            await save();
+            await waitIdle();
+          }
+        } catch {
+          // Best-effort flush — proceed to DELETE regardless.
+        }
+      }
+    }
     try {
       await fetch(`/api/audits/${auditId}/transcription-lock?channel=${encodeURIComponent(channel)}${force ? "&force=1" : ""}`, { method: "DELETE" });
     } catch {
@@ -808,6 +838,12 @@ export function ChatPanel({
 
   // Auto-save for transcription mode every 1.5s (saves while typing)
   const savingRef = useRef(false);
+  // Monotonic id so out-of-order SSE-triggered fetch responses can't clobber
+  // a newer one. Every fetchReadOnlyTranscription/fetchIncremental/doFullSync
+  // call bumps this counter, snapshots its id, and drops its response if a
+  // later call has already superseded it. Fixes "some transcription notes
+  // never showed up for viewers" under rapid consecutive SSE `chat` events.
+  const latestReadFetchIdRef = useRef(0);
   const isEmptyHtml = (html: string) => !html.replace(/<[^>]*>/g, "").trim();
   useEffect(() => {
     if (!rightPanel || transcriptionReadOnly) return;
@@ -873,8 +909,14 @@ export function ChatPanel({
         }
       } catch { setSaveStatus("idle"); } finally { savingRef.current = false; }
     };
+    // Expose to releaseTranscriptionLock so it can flush unsaved edits
+    // before releasing the lock (see savePendingRef declaration above).
+    savePendingRef.current = save;
     const id = setInterval(() => void save(), 1500);
-    return () => clearInterval(id);
+    return () => {
+      clearInterval(id);
+      savePendingRef.current = null;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rightPanel, transcriptionReadOnly]);
 
@@ -882,14 +924,17 @@ export function ChatPanel({
   const fetchReadOnlyTranscription = useCallback(async () => {
     if (!rightPanel || !transcriptionReadOnly) return;
     if (document.hidden) return;
+    const myFetchId = ++latestReadFetchIdRef.current;
     try {
       const res = await fetch(
         `/api/audits/${auditId}/chat?channel=${encodeURIComponent(channel)}`,
         { cache: "no-store" },
       );
+      if (myFetchId !== latestReadFetchIdRef.current) return; // stale response
       if (!res.ok) { liveStatusRef.current = "error"; setLiveStatus("error"); return; }
       liveStatusRef.current = "live"; setLiveStatus("live");
       const allMsgs = (await res.json()) as Message[];
+      if (myFetchId !== latestReadFetchIdRef.current) return; // stale response
       const latest = allMsgs.at(-1);
       const nextText = latest?.text ?? "";
       setText(nextText);
@@ -936,6 +981,7 @@ export function ChatPanel({
   const fetchIncremental = useCallback(async () => {
     if (rightPanel && transcriptionReadOnly) { void fetchReadOnlyTranscription(); return; }
     if (document.hidden) return;
+    const myFetchId = ++latestReadFetchIdRef.current;
     try {
       const after = lastTimeRef.current
         ? `&after=${encodeURIComponent(lastTimeRef.current)}`
@@ -944,9 +990,11 @@ export function ChatPanel({
         `/api/audits/${auditId}/chat?channel=${encodeURIComponent(channel)}${after}`,
         { cache: "no-store" },
       );
+      if (myFetchId !== latestReadFetchIdRef.current) return; // stale response
       if (!res.ok) { liveStatusRef.current = "error"; setLiveStatus("error"); return; }
       liveStatusRef.current = "live"; setLiveStatus("live");
       const newMsgs = (await res.json()) as Message[];
+      if (myFetchId !== latestReadFetchIdRef.current) return; // stale response
       if (newMsgs.length > 0) {
         if (rightPanel && !transcriptionReadOnly && !savingRef.current && textRef.current === savedContentRef.current) {
           const latest = newMsgs.at(-1)!;
@@ -1014,13 +1062,16 @@ export function ChatPanel({
     if (document.hidden) return;
     // Skip when SSE is healthy — incremental updates cover everything
     if (liveStatusRef.current === "live") return;
+    const myFetchId = ++latestReadFetchIdRef.current;
     try {
       const res = await fetch(
         `/api/audits/${auditId}/chat?channel=${encodeURIComponent(channel)}`,
         { cache: "no-store" },
       );
+      if (myFetchId !== latestReadFetchIdRef.current) return; // stale response
       if (!res.ok) return;
       const allMsgs = (await res.json()) as Message[];
+      if (myFetchId !== latestReadFetchIdRef.current) return; // stale response
       if (rightPanel && !transcriptionReadOnly && !savingRef.current && textRef.current === savedContentRef.current) {
         const latest = allMsgs.at(-1);
         const nextText = latest?.text ?? "";
