@@ -1384,11 +1384,11 @@ export function ChatPanel({
               <FrRequestsStrip auditId={auditId} frIndex={frIndex} popout={!!popout} />
             )}
             {canEditTranscription && transcriptionLockState === "available" && (
-              <div className="mx-3 mt-3 flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-900 sm:mx-4">
-                <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-sm">✓</span>
+              <div className="mx-3 my-3 flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-800 sm:mx-4">
+                <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-sm text-emerald-800">✓</span>
                 <div className="min-w-0 flex-1">
-                  <div className="font-semibold text-emerald-950">Available to edit</div>
-                  <div className="text-emerald-700/90">No one is editing right now. Click Start editing to lock the transcription.</div>
+                  <div className="font-semibold text-emerald-800">Available to edit</div>
+                  <div className="text-emerald-700">No one is editing right now. Click Start editing to lock the transcription.</div>
                 </div>
                 <button
                   type="button"
@@ -1400,11 +1400,11 @@ export function ChatPanel({
               </div>
             )}
             {canEditTranscription && transcriptionLockState === "blocked" && (
-              <div className="mx-3 mt-3 flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900 sm:mx-4">
-                <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber-100 text-sm">⏳</span>
+              <div className="mx-3 my-3 flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900 sm:mx-4">
+                <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber-100 text-sm text-amber-900">⏳</span>
                 <div className="min-w-0 flex-1">
-                  <div className="font-semibold text-amber-950">Currently locked</div>
-                  <div className="text-amber-700/90">Locked by {transcriptionLockOwner ?? "another user"}. Read-only until the lock is released.</div>
+                  <div className="font-semibold text-amber-900">Currently locked</div>
+                  <div className="text-amber-800">Locked by {transcriptionLockOwner ?? "another user"}. Read-only until the lock is released.</div>
                 </div>
                 <button
                   type="button"
@@ -1416,7 +1416,7 @@ export function ChatPanel({
               </div>
             )}
             {canEditTranscription && transcriptionLockState === "checking" && (
-              <div className="mx-3 mt-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 sm:mx-4">
+              <div className="mx-3 my-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 sm:mx-4">
                 <span className="inline-flex h-2 w-2 rounded-full bg-slate-400 mr-2 align-middle" />
                 Checking transcription lock…
               </div>
