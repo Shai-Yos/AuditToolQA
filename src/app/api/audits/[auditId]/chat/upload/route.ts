@@ -66,6 +66,14 @@ export async function POST(
     ? buildUserRolesFromJson(privilege.roomRolesJson).get(user.id) ?? privilege.assignee?.role ?? ""
     : privilege.assignee?.role ?? "";
 
+  const isTranscriptionChannel = channel.endsWith("-transcription");
+  if (isTranscriptionChannel) {
+    const frNum = parseInt(channel.replace("fr", "").replace("-transcription", ""), 10);
+    if (!privilege.assignee || !canAccessTranscription(effectiveRole, frNum)) {
+      return NextResponse.json({ error: "Transcription edit access denied" }, { status: 403 });
+    }
+  }
+
   // AUDIT_OWNER: check if they own this audit
   let isAuditOwnerOfThis = false;
   if (user.role === "AUDIT_OWNER") {
@@ -78,7 +86,7 @@ export async function POST(
       return NextResponse.json({ error: "Not authorized for this audit" }, { status: 403 });
     }
 
-    if (channel.endsWith("-transcription")) {
+    if (isTranscriptionChannel) {
       const frNum = parseInt(channel.replace("fr", "").replace("-transcription", ""), 10);
       if (!canAccessTranscription(effectiveRole, frNum)) {
         return NextResponse.json({ error: "Transcription access denied" }, { status: 403 });

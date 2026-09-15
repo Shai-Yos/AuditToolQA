@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { db } from "~/server/db";
 import { requireAdmin } from "~/server/helpers/currentUser";
-import { roleForChannel } from "~/server/lib/roomRoles";
+import { buildUserRolesFromJson, canAccessTranscription, roleForChannel } from "~/server/lib/roomRoles";
 import PopoutUI from "./ui";
 
 export default async function Page({
@@ -19,9 +19,19 @@ export default async function Page({
 
   const audit = await db.audit.findUnique({
     where: { id: auditId },
-    select: { id: true, title: true },
+    select: {
+      id: true,
+      title: true,
+      roomRolesJson: true,
+      users: { where: { userId: currentUser.id }, select: { role: true } },
+    },
   });
   if (!audit) return notFound();
+
+  const assignee = audit.users[0];
+  const effectiveRole = audit.roomRolesJson
+    ? buildUserRolesFromJson(audit.roomRolesJson).get(currentUser.id) ?? assignee?.role ?? ""
+    : assignee?.role ?? "";
 
   const messages = await db.chatMessage.findMany({
     where: { auditId, channel },
@@ -70,6 +80,8 @@ export default async function Page({
 
   const isTranscription = channel.endsWith("-transcription");
   const frNum = parseInt(/fr(\d+)/.exec(channel)?.[1] ?? "1", 10);
+  const canTranscribe = isTranscription ? (assignee ? canAccessTranscription(effectiveRole, frNum) : false) : true;
+  const readOnly = isTranscription ? !canTranscribe : false;
   const title = isTranscription
     ? `FR${frNum} Transcription`
     : `FR${frNum} \u2194 BR Communication`;
@@ -87,6 +99,7 @@ export default async function Page({
       currentUserName={currentUser.name ?? currentUser.email ?? "Admin"}
       rightPanel={isTranscription}
       allowTranscriptionExport={isTranscription}
+      readOnly={readOnly}
       frIndex={frNum}
     />
   );

@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { db } from "~/server/db";
 import { requireAdmin } from "~/server/helpers/currentUser";
-import { frToBrConnectionsFromJson, roleForChannel } from "~/server/lib/roomRoles";
+import { buildUserRolesFromJson, frToBrConnectionsFromJson, roleForChannel, transcriptionFrIndicesFromRole } from "~/server/lib/roomRoles";
 import ChatsUI from "./ui";
 
 export default async function Page({
@@ -19,6 +19,7 @@ export default async function Page({
       title: true,
       frontRoomsCount: true,
       roomRolesJson: true,
+      users: { where: { userId: currentUser.id }, select: { role: true } },
       requestStatuses: { select: { id: true, name: true, color: true, order: true } },
       requests: { select: { requestStatusId: true } },
     },
@@ -86,8 +87,12 @@ export default async function Page({
     });
   }
 
-  // Admins can see all transcription panels
-  const transcriptionFrIndices = Array.from({ length: frCount }, (_, i) => i + 1);
+  const assigneeRecord = audit.users[0];
+  const mappedRoleString = audit.roomRolesJson
+    ? buildUserRolesFromJson(audit.roomRolesJson).get(currentUser.id) ?? ""
+    : "";
+  const effectiveRoleString = mappedRoleString || assigneeRecord?.role || "";
+  const transcriptionFrIndices = transcriptionFrIndicesFromRole(effectiveRoleString);
 
   // Build FR→BR connection map from roomRolesJson
   const frToBrMap = frToBrConnectionsFromJson(audit.roomRolesJson, frCount);

@@ -93,12 +93,9 @@ export default async function AuditOwnerChatPopoutPage({
     : `FR${frNum} \u2194 BR Communication`;
   const badge = isTranscription ? `FR ${frNum}` : `Room ${frNum}`;
 
-  let readOnly = false;
-  if (!isOwner) {
-    const canTranscribe = assignee ? canAccessTranscription(effectiveRole, frNum) : false;
-    const canComm = !!assignee;
-    readOnly = isTranscription ? !canTranscribe : !canComm;
-  }
+  const canTranscribe = assignee ? canAccessTranscription(effectiveRole, frNum) : false;
+  const canComm = isOwner || !!assignee;
+  const readOnly = isTranscription ? !canTranscribe : !canComm;
 
   return (
     <PopoutUI

@@ -29,6 +29,7 @@ export default function PopoutUI({
   currentUserName,
   rightPanel,
   allowTranscriptionExport,
+  readOnly,
   frIndex,
 }: {
   auditId: string;
@@ -41,6 +42,7 @@ export default function PopoutUI({
   currentUserName: string;
   rightPanel?: boolean;
   allowTranscriptionExport?: boolean;
+  readOnly?: boolean;
   frIndex?: number;
 }) {
   const [showModal, setShowModal] = useState(false);
@@ -67,6 +69,7 @@ export default function PopoutUI({
         currentUserName={currentUserName}
         rightPanel={rightPanel}
         allowTranscriptionExport={allowTranscriptionExport}
+        readOnly={readOnly}
         frIndex={frIndex}
         popout
         onCreateRequest={(text, frIdx) => {

@@ -96,15 +96,14 @@ export default async function Page({
     : "";
   const effectiveRoleString = mappedRoleString || assigneeRecord?.role || "";
 
-  // Admins always get access to all transcription & comm channels
-  // Regular users only get access to channels where they're assigned
+  // Transcription editing/view access is role-based for all users.
+  // Comm channels remain available to admins or assigned users.
   let transcriptionFrIndices: number[];
   let commFrIndices: number[];
 
   if (currentUser.role === "ADMIN") {
-    // Admins can access all FR indices
     const allFrIndices = Array.from({ length: frCount }, (_, i) => i + 1);
-    transcriptionFrIndices = allFrIndices;
+    transcriptionFrIndices = transcriptionFrIndicesFromRole(effectiveRoleString);
     commFrIndices = allFrIndices;
   } else if (assigneeRecord) {
     transcriptionFrIndices = transcriptionFrIndicesFromRole(effectiveRoleString);

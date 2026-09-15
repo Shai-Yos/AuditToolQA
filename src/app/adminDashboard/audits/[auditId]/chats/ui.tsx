@@ -334,8 +334,8 @@ export default function ChatsUI({
                       />
                     );
                   } else {
-                    const canTranscribe = currentUser.isAdmin || transcriptionFrIndices.includes(frNum);
-                    panel = canTranscribe ? (
+                    const canTranscribe = transcriptionFrIndices.includes(frNum);
+                    panel = (
                       <ChatPanel
                         auditId={auditId}
                         channel={ch}
@@ -345,6 +345,7 @@ export default function ChatsUI({
                         composerPlaceholder="Enter transcription..."
                         currentUserName={currentUser.name}
                         allowTranscriptionExport={currentUser.isAdmin}
+                        readOnly={!canTranscribe}
                         roomUsers={roomUsers}
                         rightPanel
                         frIndex={frNum}
@@ -354,8 +355,6 @@ export default function ChatsUI({
                           "_blank"
                         )}
                       />
-                    ) : (
-                      <LockedPanel title={`FR${frNum} Transcription`} badge={`FR ${frNum}`} />
                     );
                   }
 
@@ -515,6 +514,7 @@ export function ChatPanel({
   composerPlaceholder,
   currentUserName,
   allowTranscriptionExport,
+  readOnly,
   rightPanel,
   frIndex,
   onCreateRequest,
@@ -530,6 +530,7 @@ export function ChatPanel({
   composerPlaceholder: string;
   currentUserName: string;
   allowTranscriptionExport?: boolean;
+  readOnly?: boolean;
   rightPanel?: boolean;
   frIndex?: number;
   onCreateRequest?: (text: string, frIndex?: number) => void;
@@ -575,7 +576,10 @@ export function ChatPanel({
     transcriptionLockStateRef.current = transcriptionLockState;
   }, [transcriptionLockState]);
 
-  const transcriptionReadOnly = rightPanel && transcriptionLockState !== "owned";
+  // Read-only when caller says so (e.g. admins on other users' front-room
+  // transcription channels — only the assigned transcriptionist may edit),
+  // OR while the current user does not own the collaborative edit lock.
+  const transcriptionReadOnly = readOnly || (rightPanel && transcriptionLockState !== "owned");
 
   useEffect(() => {
     if (!exportStatusText) return;
@@ -760,7 +764,7 @@ export function ChatPanel({
   }, [auditId, rightPanel]);
 
   useEffect(() => {
-    if (!rightPanel) return;
+    if (!rightPanel || readOnly) return;
 
     let cancelled = false;
     void refreshTranscriptionLock();
@@ -1482,7 +1486,7 @@ const isEmptyHtml = (html: string) => !html.replace(/<[^>]*>/g, "").trim();
               <FrRequestsStrip auditId={auditId} frIndex={frIndex} popout={!!popout} />
             )}
 
-            {rightPanel && transcriptionLockState === "available" && (
+            {rightPanel && !readOnly && transcriptionLockState === "available" && (
               <div className="mx-3 my-3 flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-800 sm:mx-4">
                 <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-sm text-emerald-800">✓</span>
                 <div className="min-w-0 flex-1">
@@ -1498,7 +1502,7 @@ const isEmptyHtml = (html: string) => !html.replace(/<[^>]*>/g, "").trim();
                 </button>
               </div>
             )}
-            {rightPanel && transcriptionLockState === "blocked" && (
+            {rightPanel && !readOnly && transcriptionLockState === "blocked" && (
               <div className="mx-3 my-3 flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900 sm:mx-4">
                 <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber-100 text-sm text-amber-900">⏳</span>
                 <div className="min-w-0 flex-1">
@@ -1514,7 +1518,7 @@ const isEmptyHtml = (html: string) => !html.replace(/<[^>]*>/g, "").trim();
                 </button>
               </div>
             )}
-            {rightPanel && transcriptionLockState === "checking" && (
+            {rightPanel && !readOnly && transcriptionLockState === "checking" && (
               <div className="mx-3 my-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 sm:mx-4">
                 <span className="inline-flex h-2 w-2 rounded-full bg-slate-400 mr-2 align-middle" />
                 Checking transcription lock…
@@ -1542,6 +1546,7 @@ const isEmptyHtml = (html: string) => !html.replace(/<[^>]*>/g, "").trim();
               </span>
             </div>
             )}
+            {!readOnly && (
             <div className="absolute bottom-2 left-0 right-0 flex justify-center pointer-events-none z-10">
               <span className={`text-[10px] lg:text-xs font-medium px-2 py-0.5 rounded-full bg-white/80 backdrop-blur-sm shadow-sm pointer-events-auto ${
                 saveStatus === "saving" ? "text-amber-500"
@@ -1555,6 +1560,7 @@ const isEmptyHtml = (html: string) => !html.replace(/<[^>]*>/g, "").trim();
                   : "✓ Saved"}
               </span>
             </div>
+            )}
             </>
           ) : (
             /* ---- Chat mode (unchanged) ---- */

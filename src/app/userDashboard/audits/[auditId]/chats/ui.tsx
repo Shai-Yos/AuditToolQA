@@ -390,7 +390,7 @@ export default function ChatsUI({
                       />
                     );
                   } else {
-                    const canTranscribe = currentUser.isAdmin || liveTranscriptionFrIndices.includes(frNum);
+                    const canTranscribe = liveTranscriptionFrIndices.includes(frNum);
                     panel = (
                       <ChatPanel
                         auditId={auditId}

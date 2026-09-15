@@ -153,12 +153,20 @@ export async function POST(
     ? buildUserRolesFromJson(privilege.roomRolesJson).get(user.id) ?? privilege.assignee?.role ?? ""
     : privilege.assignee?.role ?? "";
 
+  const isTranscriptionChannel = channel.endsWith("-transcription");
+  if (isTranscriptionChannel) {
+    const frNum = parseInt(channel.replace("fr", "").replace("-transcription", ""), 10);
+    if (!privilege.assignee || !canAccessTranscription(effectiveRole, frNum)) {
+      return NextResponse.json({ error: "Transcription edit access denied" }, { status: 403 });
+    }
+  }
+
   if (user.role !== "ADMIN" && !isAuditOwnerOfThis) {
     if (!privilege.assignee) {
       return NextResponse.json({ error: "Not authorized for this audit" }, { status: 403 });
     }
 
-    if (channel.endsWith("-transcription")) {
+    if (isTranscriptionChannel) {
       const frNum = parseInt(channel.replace("fr", "").replace("-transcription", ""), 10);
       if (!canAccessTranscription(effectiveRole, frNum)) {
         return NextResponse.json({ error: "Transcription access denied" }, { status: 403 });
@@ -373,22 +381,20 @@ export async function PATCH(
   const isOwnerForPatch =
     user.role === "AUDIT_OWNER" && privilege.createdById === user.id;
 
-  // Only admin/audit-owner or transcription-assigned users can edit transcription notes.
+  // Only transcription-assigned users can edit transcription notes.
   if (message.channel.endsWith("-transcription")) {
-    if (user.role !== "ADMIN" && !isOwnerForPatch) {
-      const frNum = parseInt(message.channel.replace("fr", "").replace("-transcription", ""), 10);
+    const frNum = parseInt(message.channel.replace("fr", "").replace("-transcription", ""), 10);
 
-      if (!privilege.assignee) {
-        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-      }
+    if (!privilege.assignee) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
 
-      const effectiveRole = privilege.roomRolesJson
-        ? buildUserRolesFromJson(privilege.roomRolesJson).get(user.id) ?? privilege.assignee.role
-        : privilege.assignee.role;
+    const effectiveRole = privilege.roomRolesJson
+      ? buildUserRolesFromJson(privilege.roomRolesJson).get(user.id) ?? privilege.assignee.role
+      : privilege.assignee.role;
 
-      if (!canAccessTranscription(effectiveRole, frNum)) {
-        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-      }
+    if (!canAccessTranscription(effectiveRole, frNum)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
   } else if (message.authorId !== user.id && user.role !== "ADMIN" && !isOwnerForPatch) {
     // For non-transcription channels, only allow author, admin, or audit owner to edit.
@@ -509,22 +515,20 @@ export async function DELETE(
   const isOwnerForDelete =
     user.role === "AUDIT_OWNER" && privilegeForDelete.createdById === user.id;
 
-  // Only admin/audit-owner or transcription-assigned users can delete transcription notes.
+  // Only transcription-assigned users can delete transcription notes.
   if (message.channel.endsWith("-transcription")) {
-    if (user.role !== "ADMIN" && !isOwnerForDelete) {
-      const frNum = parseInt(message.channel.replace("fr", "").replace("-transcription", ""), 10);
+    const frNum = parseInt(message.channel.replace("fr", "").replace("-transcription", ""), 10);
 
-      if (!privilegeForDelete.assignee) {
-        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-      }
+    if (!privilegeForDelete.assignee) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
 
-      const effectiveRole = privilegeForDelete.roomRolesJson
-        ? buildUserRolesFromJson(privilegeForDelete.roomRolesJson).get(user.id) ?? privilegeForDelete.assignee.role
-        : privilegeForDelete.assignee.role;
+    const effectiveRole = privilegeForDelete.roomRolesJson
+      ? buildUserRolesFromJson(privilegeForDelete.roomRolesJson).get(user.id) ?? privilegeForDelete.assignee.role
+      : privilegeForDelete.assignee.role;
 
-      if (!canAccessTranscription(effectiveRole, frNum)) {
-        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-      }
+    if (!canAccessTranscription(effectiveRole, frNum)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
   } else if (message.authorId !== user.id && user.role !== "ADMIN" && !isOwnerForDelete) {
     // For non-transcription channels, only allow author, admin, or audit owner to delete.

@@ -86,7 +86,7 @@ export default async function Page({
   const badge = isTranscription ? `FR ${frNum}` : `Room ${frNum}`;
 
   const isAdmin = currentUser.role === "ADMIN";
-  const canTranscribe = isAdmin || (assignee ? canAccessTranscription(effectiveRole, frNum) : false);
+  const canTranscribe = assignee ? canAccessTranscription(effectiveRole, frNum) : false;
   const canComm = isAdmin || !!assignee;
   const readOnly = isTranscription ? !canTranscribe : !canComm;
   const canExportTranscription = isTranscription && isAdmin;

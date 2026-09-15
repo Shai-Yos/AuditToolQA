@@ -102,8 +102,8 @@ export default async function AuditOwnerChatsPage({
   let commFrIndices: number[];
 
   if (isOwner) {
-    // Owner: all channels
-    transcriptionFrIndices = Array.from({ length: frCount }, (_, i) => i + 1);
+    // Transcription remains role-based even for owners.
+    transcriptionFrIndices = transcriptionFrIndicesFromRole(effectiveRoleString);
     commFrIndices = Array.from({ length: frCount }, (_, i) => i + 1);
   } else if (assigneeRecord) {
     transcriptionFrIndices = transcriptionFrIndicesFromRole(effectiveRoleString);
