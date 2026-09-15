@@ -357,11 +357,11 @@ export async function PATCH(
   if (message.channel.endsWith("-transcription")) {
     const lock = await getTranscriptionLock(auditId, message.channel);
     if (!lock || !canEditWithTranscriptionLock(lock, user.id)) {
-      const lockedByOther = !!lock.lockedBy && lock.lockedBy !== user.id && isLockFresh(lock.lockedAt);
+      const lockedByOther = !!lock?.lockedBy && lock.lockedBy !== user.id && isLockFresh(lock.lockedAt);
       return NextResponse.json(
         {
           error: lockedByOther ? "locked" : "lock-required",
-          lockedByName: lockedByOther ? lock.lockedByName : null,
+          lockedByName: lockedByOther ? lock?.lockedByName : null,
         },
         { status: 409 },
       );
