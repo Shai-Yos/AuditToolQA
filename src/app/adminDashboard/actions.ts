@@ -204,7 +204,8 @@ export async function createAudit(
     // Auto-create audit folder structure under AuditTool/Audits/ (physical folders only, no DB entries)
     void (async () => {
       try {
-        const auditFolderName = `${trackId} ${title}`.replace(/[^a-zA-Z0-9._\- ]/g, "_");
+        // Only replace problematic characters: / \ : * ? " < > |
+        const auditFolderName = `${trackId} ${title}`.replace(/[\/\\:*?"<>|]/g, "_").trim() || "audit";
         const foldersToCreate = [
           ["Audits"],
           ["Audits", auditFolderName],

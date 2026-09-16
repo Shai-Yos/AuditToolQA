@@ -251,26 +251,40 @@ export async function getOneDriveWebUrl(drivePath: string): Promise<string | nul
  * Uses the /content endpoint directly with the app token so the server
  * never redirects the browser to a SharePoint URL that may be blocked
  * by Conditional Access Policies.
+ *
+ * Retries a couple of times on transient network resets (ECONNRESET /
+ * "terminated"), which show up occasionally on large exports that hold
+ * many concurrent sockets open to Graph for an extended period.
  */
 export async function getOneDriveFileBuffer(drivePath: string): Promise<{ buffer: Buffer; size: number } | null> {
   if (!isOneDriveConfigured()) return null;
 
-  try {
-    const token = await getOneDriveToken();
-    const url = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(ONEDRIVE_USER)}/drive/root:${encodeURIComponent(drivePath).replace(/%2F/g, "/")}:/content`;
+  const maxAttempts = 3;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const token = await getOneDriveToken();
+      const url = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(ONEDRIVE_USER)}/drive/root:${encodeURIComponent(drivePath).replace(/%2F/g, "/")}:/content`;
 
-    const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
 
-    if (!res.ok) return null;
+      if (!res.ok) return null;
 
-    const arrayBuffer = await res.arrayBuffer();
-    return { buffer: Buffer.from(arrayBuffer), size: arrayBuffer.byteLength };
-  } catch (error) {
-    console.error("[OneDrive] Failed to get file buffer:", error);
-    return null;
+      const arrayBuffer = await res.arrayBuffer();
+      return { buffer: Buffer.from(arrayBuffer), size: arrayBuffer.byteLength };
+    } catch (error) {
+      const isLastAttempt = attempt === maxAttempts;
+      console.error(
+        `[OneDrive] Failed to get file buffer (attempt ${attempt}/${maxAttempts})${isLastAttempt ? "" : ", retrying"}:`,
+        error,
+      );
+      if (isLastAttempt) return null;
+      // Brief backoff before retrying (200ms, 600ms).
+      await new Promise((r) => setTimeout(r, attempt * 400));
+    }
   }
+  return null;
 }
 
 export interface OneDriveFolderFile {
@@ -324,8 +338,18 @@ export async function listOneDriveFolderEntries(folderDrivePath: string): Promis
           const name = item.name ?? "";
           if (!name) continue;
 
-          const parentPath = (item.parentReference?.path ?? "").replace(/^\/drive\/root:/, "");
-          const itemPath = `${parentPath}/${name}`.replace(/\/+/g, "/");
+          // Graph returns parentReference.path URL-encoded (e.g. spaces as
+          // %20, non-ASCII percent-encoded). We want the human-readable
+          // drive path so downstream callers can build correct relative
+          // paths and re-encode once when calling the API.
+          const rawParent = (item.parentReference?.path ?? "").replace(/^\/drive\/root:/, "");
+          let decodedParent = rawParent;
+          try {
+            decodedParent = decodeURIComponent(rawParent);
+          } catch {
+            // Ignore malformed sequences; fall back to raw.
+          }
+          const itemPath = `${decodedParent}/${name}`.replace(/\/+/g, "/");
 
           if (item.folder) {
             entries.push({ drivePath: itemPath, name, kind: "folder" });

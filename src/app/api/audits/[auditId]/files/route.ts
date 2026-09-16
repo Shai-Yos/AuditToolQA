@@ -115,7 +115,7 @@ export async function POST(
 
   // Keep folder naming consistent with createAudit action.
   const rawAuditFolderName = audit.trackId ? `${audit.trackId} ${audit.title}` : audit.title;
-  const auditFolderName = rawAuditFolderName.replace(/[^a-zA-Z0-9._\- ]/g, "_");
+  const auditFolderName = rawAuditFolderName.replace(/[\/\\:*?"<>|]/g, "_").trim() || auditId;
   const auditSlug = slugify(auditFolderName, auditId); // kept for local fallback paths
   const slotFolder = slotFolderName(slot as Slot);
 
@@ -308,7 +308,7 @@ export async function DELETE(
 
     if (audit) {
       const rawAuditFolderName2 = audit.trackId ? `${audit.trackId} ${audit.title}` : audit.title;
-      const auditFolderName2 = rawAuditFolderName2.replace(/[^a-zA-Z0-9._\- ]/g, "_");
+      const auditFolderName2 = rawAuditFolderName2.replace(/[\/\\:*?"<>|]/g, "_").trim() || auditId;
       const auditSlug = slugify(auditFolderName2, auditId);
       const slotFolder = slotFolderName(slot);
       const localFolder = join(

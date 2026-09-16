@@ -36,7 +36,7 @@ export async function POST(
   }
 
   const rawAuditFolderName = audit.trackId ? `${audit.trackId} ${audit.title}` : audit.title;
-  const safeAuditFolderName = rawAuditFolderName.replace(/[^a-zA-Z0-9._\- ]/g, "_");
+  const safeAuditFolderName = rawAuditFolderName.replace(/[\/\\:*?"<>|]/g, "_").trim() || auditId;
   const drivePath = `/AuditTool/Audits/${safeAuditFolderName}/Auditors`;
 
   const message = typeof body.message === "string" && body.message.trim()

@@ -934,7 +934,7 @@ function AuditProgress({
       <div className="relative h-2.5 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-700">
         <div
           className={`absolute left-0 top-0 h-full rounded-full transition-all ${barColor}`}
-          style={{ width: `${status === "COMPLETED" ? 100 : Math.max(0, Math.min(100, pct))}%` }}
+          style={{ width: `${status === "COMPLETED" ? 100 : Math.max(0, Math.min(100, pct)).toFixed(2)}%` }}
         />
       </div>
       <div className="mt-2 flex justify-between text-[11px] font-medium text-slate-500 dark:text-slate-400">
@@ -973,7 +973,7 @@ function StatusBreakdown({ buckets }: { buckets: StatusBucket[] }) {
         {buckets.map((b) => (
           <div
             key={b.name}
-            style={{ width: `${(b.count / total) * 100}%`, backgroundColor: b.color }}
+            style={{ width: `${((b.count / total) * 100).toFixed(2)}%`, backgroundColor: b.color }}
             title={`${b.name}: ${b.count}`}
             className="transition-all"
           />

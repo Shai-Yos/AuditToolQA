@@ -548,7 +548,7 @@ export default function EditAuditForm({ audit, currentUserName }: { audit: Audit
           <div className="h-2 w-full rounded-full bg-slate-100">
             <div
               className="h-2 rounded-full bg-slate-900 transition-all"
-              style={{ width: `${((stepIndex + 1) / steps.length) * 100}%` }}
+              style={{ width: `${(((stepIndex + 1) / steps.length) * 100).toFixed(2)}%` }}
             />
           </div>
 
