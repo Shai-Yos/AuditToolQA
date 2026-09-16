@@ -368,6 +368,15 @@ model SirtFile {
   @@index([fileName])
 }
 
+model MiscellaneousFile {
+  id        String   @id @default(cuid())
+  fileName  String   // path within the "Miscellaneous" folder, e.g. "2026/report.pdf"
+  fileUrl   String   @db.NVarChar(Max) // "onedrive:/AuditTool/Miscellaneous/..." or "folder:..."
+  createdAt DateTime @default(now())
+
+  @@index([fileName])
+}
+
 model RegulatoryImplementationFile {
   id        String   @id @default(cuid())
   fileName  String   // path within the "Regulatory Implementation of Lessons Learned" folder, e.g. "FDA/2026.pdf"

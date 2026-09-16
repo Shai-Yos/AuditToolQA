@@ -50,7 +50,7 @@ export async function GET(
     ? [`onedrive:/${joinedPath}`]
     : [`onedrive:/AuditTool/${joinedPath}`, `onedrive:/${joinedPath}`];
 
-  const [doc, chat, auditFile, riskFile, planFile, sirtFile, regulatoryFile] = await Promise.all([
+  const [doc, chat, auditFile, riskFile, planFile, sirtFile, regulatoryFile, miscFile] = await Promise.all([
     db.document.findFirst({ where: { url: { in: oneDriveUrls } }, select: { url: true } }),
     db.chatMessage.findFirst({ where: { fileUrl: { in: oneDriveUrls } }, select: { fileUrl: true } }),
     db.auditFile.findFirst({ where: { fileUrl: { in: oneDriveUrls } }, select: { fileUrl: true } }),
@@ -58,6 +58,7 @@ export async function GET(
     db.auditPlanFile.findFirst({ where: { fileUrl: { in: oneDriveUrls } }, select: { fileUrl: true } }),
     db.sirtFile.findFirst({ where: { fileUrl: { in: oneDriveUrls } }, select: { fileUrl: true } }),
     db.regulatoryImplementationFile.findFirst({ where: { fileUrl: { in: oneDriveUrls } }, select: { fileUrl: true } }),
+    db.miscellaneousFile.findFirst({ where: { fileUrl: { in: oneDriveUrls } }, select: { fileUrl: true } }),
   ]);
 
   const matchedOneDriveUrl =
@@ -67,7 +68,8 @@ export async function GET(
     riskFile?.fileUrl ??
     planFile?.fileUrl ??
     sirtFile?.fileUrl ??
-    regulatoryFile?.fileUrl;
+    regulatoryFile?.fileUrl ??
+    miscFile?.fileUrl;
 
   if (matchedOneDriveUrl) {
     const drivePath = extractDrivePath(matchedOneDriveUrl);

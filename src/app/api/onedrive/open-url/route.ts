@@ -3,7 +3,7 @@ import { db } from "~/server/db";
 import { requireUser, requireRegulatoryImplementationAccess } from "~/server/helpers/currentUser";
 import { getOneDriveWebUrl } from "@/server/lib/oneDriveClient";
 
-type LibraryType = "audit-plan" | "risk-assessment" | "sirt" | "audit-file" | "regulatory-implementation";
+type LibraryType = "audit-plan" | "risk-assessment" | "sirt" | "miscellaneous" | "audit-file" | "regulatory-implementation";
 
 /**
  * GET /api/onedrive/open-url?fileId=...&type=audit-plan|risk-assessment|sirt
@@ -53,6 +53,12 @@ export async function GET(request: NextRequest) {
     fileUrl = row?.fileUrl ?? null;
   } else if (type === "sirt") {
     const row = await db.sirtFile.findFirst({
+      where: { id: fileId },
+      select: { fileUrl: true },
+    });
+    fileUrl = row?.fileUrl ?? null;
+  } else if (type === "miscellaneous") {
+    const row = await db.miscellaneousFile.findFirst({
       where: { id: fileId },
       select: { fileUrl: true },
     });
