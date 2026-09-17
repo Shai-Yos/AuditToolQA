@@ -39,13 +39,11 @@ export default async function AuditOwnerKanbanPage({
     new Set(audit.requests.flatMap((r) => r.assignees.map((a) => a.userId)))
   );
   const photoMap = new Map<string, string | null>();
-  if (isOwner) {
-    await Promise.all(
-      allAssigneeIds.map(async (userId) => {
-        photoMap.set(userId, await getUserPhoto(userId).catch(() => null));
-      })
-    );
-  }
+  await Promise.all(
+    allAssigneeIds.map(async (userId) => {
+      photoMap.set(userId, await getUserPhoto(userId).catch(() => null));
+    })
+  );
 
   const roomLabel = `${audit.frontRoomsCount} FR · ${audit.backRoomsCount} BR`;
 
