@@ -23,27 +23,42 @@ export type ActivityType =
 
 // Map activity types to notification types + resolve affected users
 const NOTIFICATION_MAP: Partial<
-  Record<ActivityType, { type: NotificationType; titleFn: (t: string, actor: string) => string; messageFn: (t: string, actor: string, meta?: Record<string, string>) => string }>
+  Record<ActivityType, {
+    type: NotificationType;
+    titleFn: (t: string, actor: string) => string;
+    messageFn: (t: string, actor: string, meta?: Record<string, string>) => string;
+    /**
+     * Message used for recipients who are notified only for visibility
+     * (e.g. admins / audit owner watching all activity) rather than
+     * because they were the actual target of the action. Falls back to
+     * `messageFn` when omitted.
+     */
+    otherMessageFn?: (t: string, actor: string, meta?: Record<string, string>) => string;
+  }>
 > = {
   USER_ASSIGNED_AUDIT: {
     type: "AUDIT_ASSIGNED",
     titleFn: (_t, _a) => "Assigned to Audit",
     messageFn: (t, actor) => `${actor} assigned you to audit "${t}"`,
+    otherMessageFn: (t, actor, meta) => `${actor} assigned ${meta?.assigneeNames ?? "a user"} to audit "${t}"`,
   },
   USER_UNASSIGNED_AUDIT: {
     type: "AUDIT_UNASSIGNED",
     titleFn: () => "Removed from Audit",
     messageFn: (t, actor) => `${actor} removed you from audit "${t}"`,
+    otherMessageFn: (t, actor, meta) => `${actor} removed ${meta?.assigneeNames ?? "a user"} from audit "${t}"`,
   },
   USER_ASSIGNED_REQUEST: {
     type: "REQUEST_ASSIGNED",
     titleFn: () => "Assigned to Request",
     messageFn: (t, actor) => `${actor} assigned you to request "${t}"`,
+    otherMessageFn: (t, actor, meta) => `${actor} assigned ${meta?.assigneeNames ?? "a user"} to request "${t}"`,
   },
   USER_UNASSIGNED_REQUEST: {
     type: "REQUEST_UNASSIGNED",
     titleFn: () => "Removed from Request",
     messageFn: (t, actor) => `${actor} removed you from request "${t}"`,
+    otherMessageFn: (t, actor, meta) => `${actor} removed ${meta?.assigneeNames ?? "a user"} from request "${t}"`,
   },
   REQUEST_CREATED: {
     type: "REQUEST_CREATED",
@@ -132,6 +147,7 @@ export async function logActivity({
 
       // Merge explicit notifyUserIds + admins + audit owner, deduplicate
       const explicit = notifyUserIds ?? [];
+      const explicitSet = new Set(explicit);
       const allIds = [...new Set([...explicit, ...adminIds, ...auditOwnerIds])];
 
       // Remove the actor so they don't get notified about their own action
@@ -148,15 +164,25 @@ export async function logActivity({
       if (finalIds.length > 0) {
         const { linkAdmin, linkUser, linkAuditOwner } = buildLinks(type, targetId, meta);
         await createNotifications(
-          finalIds.map((userId) => ({
-            userId,
-            type: mapping.type,
-            title: mapping.titleFn(targetTitle, actorName),
-            message: mapping.messageFn(targetTitle, actorName, meta),
-            linkAdmin,
-            linkUser,
-            linkAuditOwner,
-          })),
+          finalIds.map((userId) => {
+            // Recipients who were actually assigned/removed (explicit) get the
+            // direct "assigned you"-style message. Everyone else (admins/audit
+            // owner watching for visibility) gets the third-person variant so
+            // they aren't misled into thinking the action was done to them.
+            const messageFn =
+              explicitSet.has(userId) || !mapping.otherMessageFn
+                ? mapping.messageFn
+                : mapping.otherMessageFn;
+            return {
+              userId,
+              type: mapping.type,
+              title: mapping.titleFn(targetTitle, actorName),
+              message: messageFn(targetTitle, actorName, meta),
+              linkAdmin,
+              linkUser,
+              linkAuditOwner,
+            };
+          }),
         );
       }
     }

@@ -229,7 +229,7 @@ export function RequestCardView({
       {/* Title + status badge */}
       <div className="flex items-start justify-between gap-2">
         <span
-          className={`line-clamp-2 text-sm font-semibold ${
+          className={`whitespace-normal break-words text-sm font-semibold ${
             isCancelled ? "text-slate-400 line-through" : "text-slate-900"
           }`}
         >
